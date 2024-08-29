@@ -66,7 +66,7 @@ In the context of the script, there are several variables that can change based 
 1. First, download the repository.
    
  ```
- git clone https://github.com/Mohammad-Mirasadollahi/Splunk_Frozen_Retention_Policy_Scripts.tar.gz.git
+ git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-index-Retention-Policy.git
    ```
 2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
