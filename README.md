@@ -149,10 +149,8 @@ timestamp="2024-08-28T15:40:00+00:00" process_id="1a2b3c" frozen_index="index1" 
 **current_frozen_days_with_logs:** The number of days for which the index has log files after processing.\
 **message:** A description of the final status of the index after processing.
    
-   
-   
-   
-   
+# Test Logs
+The TEST.sh script is used to create various log files in the /tmp/frozen_test directory, which can be used for testing the Splunk_Frozen_Retention_Policy.sh script.
    
    
    
