@@ -75,9 +75,60 @@ cp -r * /root/scripts/
 ```
 bash ./Splunk_Frozen_Policy_service.sh
    ```
-   
-   
-   
+# Logging
+
+   1. Log for Exceeding Limits\
+This log is generated when an index exceeds its size or retention limits.
+
+**timestamp:** The exact date and time when the log was created, formatted as YYYY-MM-DDTHH:MM:SS+TZ.\
+**process_id:** A unique 6-digit hexadecimal identifier generated for each index processing.\
+**frozen_index:** The name of the index that is being processed.\
+**action:** This field is set to "exceeds_limit", indicating that the index has surpassed its allowed limits.\
+**reason:** A description of why the index exceeds the limits. This could be size_limit_exceeded, retention_days_exceeded, or both.\
+**overage_mb:** The amount of storage (in MB) by which the index exceeds its size limit.\
+**overage_days:** The number of days by which the index exceeds its retention period.\
+**exceeds_limit_frozen_size_mb:** The total size of the index (in MB) at the time the limit was exceeded.\
+**frozen_size_limit_mb:** The size limit (in MB) set for the index in the configuration.\
+**current_frozen_days_with_logs:** The number of days for which the index has log files.\
+**frozen_retention_days:** The retention period (in days) set for the index in the configuration.\
+**message:** A description of the event, typically stating that the index exceeds the defined limits.
+
+2. Log for Deleting Files\
+This log is generated when the script deletes files from an index to bring it within limits.
+
+**timestamp:** The exact date and time when the log was created.\
+**process_id:** The unique identifier for the current index processing.\
+**frozen_index:** The name of the index being processed.\
+**action:** This field is set to "deleting_file", indicating that a file is being deleted.\
+**deleted_file:** The path to the file that was deleted.\
+**deleted_file_size_mb:** The size of the deleted file in MB.\
+**deleted_file_age_days:** The age of the deleted file in days.\
+**reason:** The reason for deleting the file, either size_limit_exceeded or retention_days_exceeded, along with the corresponding overage.\
+**message:** A description of the event, indicating that the file was deleted to comply with the policy.\
+
+**3. Log for Deletion Summary**\
+This log is generated after the script finishes deleting files to summarize the deletion process.
+
+**timestamp:** The exact date and time when the log was created.\
+**process_id:** The unique identifier for the current index processing.\
+**frozen_index:** The name of the index being processed.\
+**action:** This field is set to "deletion_summary", indicating a summary of the deletion process.\
+**deleted_size_mb:** The total amount of data (in MB) deleted during the process.\
+**time_taken_sec:** The total time (in seconds) it took to delete the files and bring the index within limits.\
+**message:** A description of the event, typically stating the total size deleted and the time taken.
+
+4. Final Summary Log\
+This log provides a summary of the index status after processing, regardless of whether limits were exceeded.
+
+**timestamp:** The exact date and time when the log was created.\
+**process_id:** The unique identifier for the current index processing.\
+**frozen_index:** The name of the index being processed.\
+**action:** This field is set to "final_summary", indicating the final status after processing.\
+**earliest_log_date:** The date of the earliest log file in the index (if available).\
+**latest_log_date:** The date of the latest log file in the index (if available).\
+**final_frozen_size_mb:** The total size of the index (in MB) after processing.\
+**current_frozen_days_with_logs:** The number of days for which the index has log files after processing.\
+**message:** A description of the final status of the index after processing.
    
    
    
