@@ -61,6 +61,12 @@ In the context of the script, there are several variables that can change based 
 
 **Quick Start Guide:**
 
+0. Make sure you are login as root.
+   
+ ```
+ sudo -i
+   ```
+
 1. First, download the repository.
    
  ```
