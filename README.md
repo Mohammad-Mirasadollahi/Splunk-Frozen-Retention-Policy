@@ -47,7 +47,7 @@ In the context of the script, there are several variables that can change based 
 
 **FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
 **LOG_FILE=**"/var/log/Splunk_Frozen_Data.log": The log file where the script records its operations.\
-**CONFIG_FILE=**"/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index.\
+**CONFIG_FILE=**"/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index frozen path.\
 **SCRIPT_PATH=**"/root/scripts/Delete_Empty_Folder.sh": Path to the external script (Delete_Empty_Folder.sh).
 
 **2. Delete_Empty_Folder.sh**
