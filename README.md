@@ -30,13 +30,13 @@ index=index3,size=6000,retention=60
 -------------------------------------------------------------------------
 
 **index:**\
-The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in this index's directory. For example, The script will monitor the directory associated with index1.
+The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in frozen index's directory. For example, The script will monitor the directory associated with frozen index1.
 
 **size:**\
-This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the index directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the index size back within the limit. For example If the total size of files in the index1 directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
+This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the index directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the frozen index size back within the limit. For example If the total size of files in the index1 directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
 
 **retention:**\
-This is the maximum number of days that data in the index can be retained. If any data in the index is older than this retention period, the script will delete the oldest files first until the data within the directory complies with the retention policy. For example: If any file in the index1 directory is older than 30 days, the script will delete it to comply with the retention policy.
+This is the maximum number of days that data in the index can be retained. If any data in the index is older than this retention period, the script will delete the oldest files first until the data within the directory complies with the retention policy. For example: If any file in the index1 frozen directory is older than 30 days, the script will delete it to comply with the retention policy.
 
 ## Variables
 In the context of the script, there are several variables that can change based on your environment. you can (optional) change it based on your environment.
