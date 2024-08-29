@@ -77,8 +77,12 @@ bash ./Splunk_Frozen_Policy_service.sh
    ```
 # Logging
 
-   1. Log for Exceeding Limits\
+## Log for Exceeding Limits
 This log is generated when an index exceeds its size or retention limits.
+
+```
+timestamp="2024-08-28T15:34:20+00:00" process_id="1a2b3c" frozen_index="index1" action="exceeds_limit" reason="size_limit_exceeded" overage_mb="1500" overage_days="0" exceeds_limit_frozen_size_mb="6500" frozen_size_limit_mb="5000" current_frozen_days_with_logs="20" frozen_retention_days="30" message="Index exceeds the defined limits."
+   ```
 
 **timestamp:** The exact date and time when the log was created, formatted as YYYY-MM-DDTHH:MM:SS+TZ.\
 **process_id:** A unique 6-digit hexadecimal identifier generated for each index processing.\
@@ -93,8 +97,12 @@ This log is generated when an index exceeds its size or retention limits.
 **frozen_retention_days:** The retention period (in days) set for the index in the configuration.\
 **message:** A description of the event, typically stating that the index exceeds the defined limits.
 
-2. Log for Deleting Files\
+## Log for Deleting Files
 This log is generated when the script deletes files from an index to bring it within limits.
+
+```
+timestamp="2024-08-28T15:35:10+00:00" process_id="1a2b3c" frozen_index="index1" action="deleting_file" deleted_file="/tmp/frozen_test/index1/log2023-08-01.log" deleted_file_size_mb="500" deleted_file_age_days="27" reason="size_limit_exceeded" message="File deleted to comply with size limit."
+   ```
 
 **timestamp:** The exact date and time when the log was created.\
 **process_id:** The unique identifier for the current index processing.\
@@ -106,8 +114,12 @@ This log is generated when the script deletes files from an index to bring it wi
 **reason:** The reason for deleting the file, either size_limit_exceeded or retention_days_exceeded, along with the corresponding overage.\
 **message:** A description of the event, indicating that the file was deleted to comply with the policy.\
 
-**3. Log for Deletion Summary**\
+## Log for Deletion Summary**
 This log is generated after the script finishes deleting files to summarize the deletion process.
+
+```
+timestamp="2024-08-28T15:37:45+00:00" process_id="1a2b3c" frozen_index="index1" action="deletion_summary" deleted_size_mb="1500" time_taken_sec="155" message="Deleted a total of 1500 MB to bring the index within limits."
+   ```
 
 **timestamp:** The exact date and time when the log was created.\
 **process_id:** The unique identifier for the current index processing.\
@@ -117,8 +129,12 @@ This log is generated after the script finishes deleting files to summarize the 
 **time_taken_sec:** The total time (in seconds) it took to delete the files and bring the index within limits.\
 **message:** A description of the event, typically stating the total size deleted and the time taken.
 
-4. Final Summary Log\
+## Final Summary Log
 This log provides a summary of the index status after processing, regardless of whether limits were exceeded.
+
+```
+timestamp="2024-08-28T15:40:00+00:00" process_id="1a2b3c" frozen_index="index1" action="final_summary" earliest_log_date="2023-08-01" latest_log_date="2024-08-28" final_frozen_size_mb="5000" current_frozen_days_with_logs="27" message="Final index status after processing."
+   ```
 
 **timestamp:** The exact date and time when the log was created.\
 **process_id:** The unique identifier for the current index processing.\
