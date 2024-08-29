@@ -4,7 +4,7 @@ This repository provides a set of Bash scripts designed to manage frozen path da
 **Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data without any issues.
 
 # Overview
-This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen path within predefined limits and prevent excessive storage usage by cleaning up oldet files and directories. The primary script **(Splunk_Frozen_Retention_Policy.sh)** handles index size and retention management, while the secondary script **(Delete_Empty_Folder.sh)** cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
+This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen path within predefined limits and prevent excessive storage usage by cleaning up oldet files and directories. The primary script **(Splunk_Frozen_Retention_Policy.sh)** handles Frozen path size and retention management, while the secondary script **(Delete_Empty_Folder.sh)** cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
 
 This script manages frozen path in a Splunk environment and performs the following tasks:
 1. **Frozen Path Monitoring**: It scans the directories containing frozen path to assess their size and retention periods.
