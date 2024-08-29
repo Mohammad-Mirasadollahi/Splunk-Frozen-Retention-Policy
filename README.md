@@ -171,7 +171,7 @@ timestamp="2024-08-28T15:40:00+00:00" process_id="1a2b3c" frozen_index="index1" 
 # Test Logs
 The TEST.sh script is used to create various log files in the /tmp/frozen_test directory, which can be used for testing the Splunk_Frozen_Retention_Policy.sh script.
 
-By editing this script, you can change the FROZEN_PATH directory for creating test logs.
+By editing this script, you can change the FROZEN_PATH directory for creating test logs in your desired path.
    
    
    
