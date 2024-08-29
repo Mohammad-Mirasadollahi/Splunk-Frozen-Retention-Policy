@@ -38,6 +38,8 @@ This is the maximum allowed size for the index's frozen data, expressed in MB (M
 **retention:**\
 This is the maximum number of days that data in the index can be retained. If any data in the index is older than this retention period, the script will delete the oldest files first until the data within the directory complies with the retention policy. For example: If any file in the index1 frozen directory is older than 30 days, the script will delete it to comply with the retention policy.
 
+**Note:** If a Frozen Index exists in the frozen path but is not defined in the index_size.conf, nothing will happen to that Frozen Index, and only its log will be recorded.
+
 ## Variables
 In the context of the script, there are several variables that can change based on your environment. you can (optional) change it based on your environment.
 
