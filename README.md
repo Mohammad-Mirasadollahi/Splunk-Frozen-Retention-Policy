@@ -30,7 +30,7 @@ index=index3,size=6000,retention=60
 -------------------------------------------------------------------------
 
 **index:**\
-The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in Frozen path's directory. For example, The script will monitor the directory associated with index1.
+The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in Frozen path's directory. For example, The script will monitor the directory associated with index1 frozen path.
 
 **size:**\
 This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the frozen path directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the Frozen path size back within the limit. For example If the total size of files in the index1 frozen path directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
