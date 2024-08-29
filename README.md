@@ -73,7 +73,7 @@ In the context of the script, there are several variables that can change based 
  ```
 cd Splunk-Frozen-index-Retention-Policy
 mkdir -p /root/scripts
-cp -r * /root/scripts/
+mv * /root/scripts/
    ```
 3. First go to the /root/scripts/ directory and then, run the following command.
 ```
