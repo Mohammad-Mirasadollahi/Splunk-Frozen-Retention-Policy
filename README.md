@@ -75,6 +75,12 @@ cp -r * /root/scripts/
 3. First go to the /root/scripts/ directory and then, run the following command.
 ```
 cd /root/scripts/
+apt-get install unzip
+unzip Frozen_Retention_Policy_Scripts.zip
+   ```
+
+4. Then, hust run the following command.
+```
 bash ./Splunk_Frozen_Policy_service.sh
    ```
 
