@@ -84,7 +84,7 @@ tar xzvf Splunk_Frozen_Retention_Policy_Scripts.tar.gz
 bash ./Splunk_Frozen_Policy_service.sh
    ```
 
-When the Splunk_Frozen_Policy_service.sh script is executed, a service named Splunk_Frozen_Policy will be created. This service runs the Splunk_Frozen_Retention_Policy.sh script every 24 hours to check frozen indexes and apply retention policies. If you want to modify 24 hours you must edit /etc/systemd/system/Splunk_Frozen_Policy.timer and change OnUnitActiveSec to what ever value you want.
+When the Splunk_Frozen_Policy_service.sh script is executed, a service named **Splunk_Frozen_Policy** will be created. This service runs the Splunk_Frozen_Retention_Policy.sh script every 24 hours to check frozen indexes and apply retention policies. If you want to modify 24 hours you must edit /etc/systemd/system/Splunk_Frozen_Policy.timer and change **OnUnitActiveSec** to what ever value you want.
 
 # Logging
 
