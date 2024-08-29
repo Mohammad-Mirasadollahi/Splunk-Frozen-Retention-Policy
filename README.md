@@ -89,7 +89,7 @@ tar xzvf Splunk_Frozen_Retention_Policy_Scripts.tar.gz
 ```
 bash ./Splunk_Frozen_Policy_service.sh
    ```
-5. Check the service status.
+5. Finally, check the service status.
 ```
 service Splunk_Frozen_Policy status
    ```
