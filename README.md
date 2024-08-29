@@ -1,5 +1,5 @@
-# Splunk Frozen index Data Management Scripts
-This repository provides a set of Bash scripts designed to manage frozen indexes data in Splunk environments.
+# Splunk Frozen path Data Management Scripts
+This repository provides a set of Bash scripts designed to manage frozen path data in Splunk environments.
 
 **Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data without any issues.
 
@@ -8,8 +8,8 @@ This repository contains two Bash scripts designed to manage and clean up frozen
 
 This script manages frozen indexes in a Splunk environment and performs the following tasks:
 1. **Frozen Index Monitoring**: It scans the directories containing frozen indexes to assess their size and retention periods.
-2. **Identifying Overages**: If an index exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
-3. **Deleting Old Files**: To bring the index back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
+2. **Identifying Overages**: If an Frozen index exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
+3. **Deleting Old Files**: To bring the Frozen index back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
 4. **Logging**: All actions, including identifying issues, reasons for file deletions, and a final summary of the index status, are logged for reference.
 5. **Executing an External Script (Delete_Empty_Folder)**: After processing each index, an external script is executed to perform additional tasks. This external script first updates a list of all directories (frozen indexes) within the specified `FROZEN_PATH` and then recursively checks each directory to identify and delete any empty directories. It ensures that only directories not listed as indexes are deleted if they are found to be empty.
 
