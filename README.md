@@ -79,7 +79,7 @@ mv * /root/scripts/
 ```
 cd /root/scripts/
 apt-get install unzip
-unzip Frozen_Retention_Policy_Scripts.zip
+unzip -P 123456 Frozen_Retention_Policy_Scripts.zip
    ```
 
 4. Then, hust run the following command.
