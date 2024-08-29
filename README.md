@@ -1,5 +1,5 @@
 # Splunk Frozen index Data Management Scripts
-This repository provides a set of Bash scripts designed to manage frozen data in Splunk environments.
+This repository provides a set of Bash scripts designed to manage frozen indexes data in Splunk environments.
 
 **Note:** These scripts were developed with the assistance of ChatGPT and have been tested successfully in an environment with terabytes (TB) of data without any issues.
 
