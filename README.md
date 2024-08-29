@@ -63,16 +63,18 @@ In the context of the script, there are several variables that can change based 
 1. First, download the repository.
    
  ```
- git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy.git
+ git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-index-Retention-Policy.git
    ```
-2. After extracting the files, move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
+2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
  ```
+cd Splunk-Frozen-index-Retention-Policy
 mkdir -p /root/scripts
 cp -r * /root/scripts/
    ```
-3. Then, run the following command:
+3. First go to the /root/scripts/ directory and then, run the following command:
 ```
+cd /root/scripts/
 bash ./Splunk_Frozen_Policy_service.sh
    ```
 
