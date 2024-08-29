@@ -42,19 +42,19 @@ In the context of the script, there are several variables that can change based 
 
 **1. Splunk_Frozen_Retention_Policy.sh**
 
-FROZEN_PATH="/frozen": The directory containing frozen index data.\
-LOG_FILE="/var/log/Splunk_Frozen_Data.log": The log file where the script records its operations.\
-CONFIG_FILE="/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index.\
-SCRIPT_PATH="/root/scripts/Delete_Empty_Folder.sh": Path to the external script (Delete_Empty_Folder.sh).
+**FROZEN_PATH=**"/frozen": The directory containing frozen index data.\
+**LOG_FILE=**"/var/log/Splunk_Frozen_Data.log": The log file where the script records its operations.\
+**CONFIG_FILE=**"/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index.\
+**SCRIPT_PATH=**"/root/scripts/Delete_Empty_Folder.sh": Path to the external script (Delete_Empty_Folder.sh).
 
 **2. Delete_Empty_Folder.sh**
 
-FROZEN_PATH="/frozen": The directory containing frozen index data.\
-INDEX_FILE="$PWD/index_list.txt": list of all frozen indexes
+**FROZEN_PATH=**"/frozen": The directory containing frozen index data.\
+**INDEX_FILE=**"$PWD/index_list.txt": list of all frozen indexes
 
 **3. Splunk_Frozen_Policy_service.sh**
 
-SCRIPT_PATH="/root/scripts/Splunk_Frozen_Retention_Policy.sh": The full path of the Splunk_Frozen_Retention_Policy.sh
+**SCRIPT_PATH=**"/root/scripts/Splunk_Frozen_Retention_Policy.sh": The full path of the Splunk_Frozen_Retention_Policy.sh
 
 # Quick Start
 
