@@ -73,4 +73,3 @@ touch -d "5 days ago" "$TEST_INDEX_DIR/large_file.log"
 
 # Modify the timestamps of all files and directories inside "test" to be 5 days ago
 find "$TEST_DIR/test" -exec touch -d "5 days ago" {} +
-
