@@ -7,7 +7,7 @@ This repository provides a set of Bash scripts designed to manage frozen indexes
 This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen indexes within predefined limits, prevent excessive storage usage, and maintain an organized file structure by cleaning up unnecessary empty directories. The primary script handles index size and retention management, while the secondary script cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
 
 This script manages frozen indexes in a Splunk environment and performs the following tasks:
-1. **Index Monitoring**: It scans the directories containing frozen indexes to assess their size and retention periods.
+1. **Frozen Index Monitoring**: It scans the directories containing frozen indexes to assess their size and retention periods.
 2. **Identifying Overages**: If an index exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
 3. **Deleting Old Files**: To bring the index back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
 4. **Logging**: All actions, including identifying issues, reasons for file deletions, and a final summary of the index status, are logged for reference.
