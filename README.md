@@ -71,9 +71,9 @@ In the context of the script, there are several variables that can change based 
 2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
  ```
-cd Splunk_Frozen_Retention_Policy_Scripts
+cd Splunk-Frozen-index-Retention-Policy
 mkdir -p /root/scripts
-mv * /root/scripts/
+mv Splunk_Frozen_Retention_Policy_Scripts.tar.gz /root/scripts/
    ```
 3. First go to the /root/scripts/ directory and then, run the following command.
 ```
