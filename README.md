@@ -66,20 +66,19 @@ In the context of the script, there are several variables that can change based 
 1. First, download the repository.
    
  ```
- git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-index-Retention-Policy.git
+ git clone https://github.com/Mohammad-Mirasadollahi/Splunk_Frozen_Retention_Policy_Scripts.tar.gz.git
    ```
 2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
  ```
-cd Splunk-Frozen-index-Retention-Policy
+cd Splunk_Frozen_Retention_Policy_Scripts
 mkdir -p /root/scripts
 mv * /root/scripts/
    ```
 3. First go to the /root/scripts/ directory and then, run the following command.
 ```
 cd /root/scripts/
-apt-get install unzip
-unzip -P 123456 Frozen_Retention_Policy_Scripts.zip
+tar xzvf Splunk_Frozen_Retention_Policy_Scripts.tar.gz
    ```
 
 4. Then, hust run the following command.
