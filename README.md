@@ -4,18 +4,18 @@ This repository provides a set of Bash scripts designed to manage frozen path da
 **Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data without any issues.
 
 # Overview
-This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen indexes within predefined limits, prevent excessive storage usage, and maintain an organized file structure by cleaning up unnecessary empty directories. The primary script handles index size and retention management, while the secondary script cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
+This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen path within predefined limits, prevent excessive storage usage, and maintain an organized file structure by cleaning up unnecessary empty directories. The primary script handles index size and retention management, while the secondary script cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
 
-This script manages frozen indexes in a Splunk environment and performs the following tasks:
-1. **Frozen Index Monitoring**: It scans the directories containing frozen indexes to assess their size and retention periods.
+This script manages frozen path in a Splunk environment and performs the following tasks:
+1. **Frozen Index Monitoring**: It scans the directories containing frozen path to assess their size and retention periods.
 2. **Identifying Overages**: If an Frozen index exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
 3. **Deleting Old Files**: To bring the Frozen index back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
 4. **Logging**: All actions, including identifying issues, reasons for file deletions, and a final summary of the index status, are logged for reference.
-5. **Executing an External Script (Delete_Empty_Folder)**: After processing each index, an external script is executed to perform additional tasks. This external script first updates a list of all directories (frozen indexes) within the specified `FROZEN_PATH` and then recursively checks each directory to identify and delete any empty directories. It ensures that only directories not listed as indexes are deleted if they are found to be empty.
+5. **Executing an External Script (Delete_Empty_Folder)**: After processing each index, an external script is executed to perform additional tasks. This external script first updates a list of all directories (frozen path) within the specified `FROZEN_PATH` and then recursively checks each directory to identify and delete any empty directories. It ensures that only directories not listed as indexes are deleted if they are found to be empty.
 
 # Configuration File 
 ## index_size.conf
-The index_size.conf file is a configuration file that contains important settings for managing the frozen indexes within the script. This file is read by the script to determine the size limits and retention periods for each index. 
+The index_size.conf file is a configuration file that contains important settings for managing the frozen path within the script. This file is read by the script to determine the size limits and retention periods for each index. 
 
 **Structure of index_size.conf**
 
@@ -53,7 +53,7 @@ In the context of the script, there are several variables that can change based 
 **2. Delete_Empty_Folder.sh**
 
 **FROZEN_PATH=**"/frozen": The directory containing frozen index data.\
-**INDEX_FILE=**"$PWD/index_list.txt": list of all frozen indexes
+**INDEX_FILE=**"$PWD/index_list.txt": list of all frozen path
 
 **3. Splunk_Frozen_Policy_service.sh**
 
@@ -95,7 +95,7 @@ bash ./Splunk_Frozen_Policy_service.sh
 ```
 service Splunk_Frozen_Policy status
    ```
-When the Splunk_Frozen_Policy_service.sh script is executed, a service named **Splunk_Frozen_Policy** will be created. This service runs the Splunk_Frozen_Retention_Policy.sh script every 24 hours to check frozen indexes and apply retention policies. If you want to modify 24 hours you must edit /etc/systemd/system/Splunk_Frozen_Policy.timer and change **OnUnitActiveSec** to what ever value you want.
+When the Splunk_Frozen_Policy_service.sh script is executed, a service named **Splunk_Frozen_Policy** will be created. This service runs the Splunk_Frozen_Retention_Policy.sh script every 24 hours to check frozen path and apply retention policies. If you want to modify 24 hours you must edit /etc/systemd/system/Splunk_Frozen_Policy.timer and change **OnUnitActiveSec** to what ever value you want.
 
 # Logging
 
