@@ -7,9 +7,9 @@ This repository provides a set of Bash scripts designed to manage frozen path da
 This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen path within predefined limits, prevent excessive storage usage, and maintain an organized file structure by cleaning up unnecessary empty directories. The primary script handles index size and retention management, while the secondary script cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
 
 This script manages frozen path in a Splunk environment and performs the following tasks:
-1. **Frozen Index Monitoring**: It scans the directories containing frozen path to assess their size and retention periods.
-2. **Identifying Overages**: If an Frozen index exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
-3. **Deleting Old Files**: To bring the Frozen index back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
+1. **Frozen Path Monitoring**: It scans the directories containing frozen path to assess their size and retention periods.
+2. **Identifying Overages**: If an Frozen path exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
+3. **Deleting Old Files**: To bring the Frozen path back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
 4. **Logging**: All actions, including identifying issues, reasons for file deletions, and a final summary of the index status, are logged for reference.
 5. **Executing an External Script (Delete_Empty_Folder)**: After processing each index, an external script is executed to perform additional tasks. This external script first updates a list of all directories (frozen path) within the specified `FROZEN_PATH` and then recursively checks each directory to identify and delete any empty directories. It ensures that only directories not listed as indexes are deleted if they are found to be empty.
 
@@ -30,29 +30,29 @@ index=index3,size=6000,retention=60
 -------------------------------------------------------------------------
 
 **index:**\
-The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in frozen index's directory. For example, The script will monitor the directory associated with frozen index1.
+The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in Frozen path's directory. For example, The script will monitor the directory associated with Frozen path1.
 
 **size:**\
-This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the index directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the frozen index size back within the limit. For example If the total size of files in the index1 directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
+This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the index directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the Frozen path size back within the limit. For example If the total size of files in the index1 directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
 
 **retention:**\
 This is the maximum number of days that data in the index can be retained. If any data in the index is older than this retention period, the script will delete the oldest files first until the data within the directory complies with the retention policy. For example: If any file in the index1 frozen directory is older than 30 days, the script will delete it to comply with the retention policy.
 
-**Note:** If a Frozen Index exists in the frozen path but is not defined in the index_size.conf, nothing will happen to that Frozen Index, and only its log will be recorded.
+**Note:** If a Frozen path exists in the frozen path but is not defined in the index_size.conf, nothing will happen to that Frozen path, and only its log will be recorded.
 
 ## Variables
 In the context of the script, there are several variables that can change based on your environment. you can (optional) change it based on your environment.
 
 **1. Splunk_Frozen_Retention_Policy.sh**
 
-**FROZEN_PATH=**"/frozen": The directory containing frozen index data.\
+**FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
 **LOG_FILE=**"/var/log/Splunk_Frozen_Data.log": The log file where the script records its operations.\
 **CONFIG_FILE=**"/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index.\
 **SCRIPT_PATH=**"/root/scripts/Delete_Empty_Folder.sh": Path to the external script (Delete_Empty_Folder.sh).
 
 **2. Delete_Empty_Folder.sh**
 
-**FROZEN_PATH=**"/frozen": The directory containing frozen index data.\
+**FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
 **INDEX_FILE=**"$PWD/index_list.txt": list of all frozen path
 
 **3. Splunk_Frozen_Policy_service.sh**
