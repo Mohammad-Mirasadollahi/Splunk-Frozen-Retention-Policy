@@ -72,7 +72,7 @@ cd Splunk-Frozen-index-Retention-Policy
 mkdir -p /root/scripts
 cp -r * /root/scripts/
    ```
-3. First go to the /root/scripts/ directory and then, run the following command:
+3. First go to the /root/scripts/ directory and then, run the following command.
 ```
 cd /root/scripts/
 bash ./Splunk_Frozen_Policy_service.sh
