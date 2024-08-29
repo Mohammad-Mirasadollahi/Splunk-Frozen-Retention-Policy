@@ -2,6 +2,9 @@
 This repository provides a set of Bash scripts designed to manage frozen data in Splunk environments.
 
 **Note:** These scripts were developed with the assistance of ChatGPT and have been tested successfully in an environment with terabytes (TB) of data without any issues.
+
+**File Password:** 123456
+
 # Overview
 This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen indexes within predefined limits, prevent excessive storage usage, and maintain an organized file structure by cleaning up unnecessary empty directories. The primary script handles index size and retention management, while the secondary script cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
 
