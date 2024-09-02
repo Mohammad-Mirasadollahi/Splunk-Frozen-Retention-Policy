@@ -41,7 +41,7 @@ This is the maximum number of days that data in the index frozen path can be ret
 **Note:** If a Index Frozen path exists in the frozen path but is not defined in the index_size.conf, nothing will happen to that Index Frozen path, and only its log will be recorded.
 
 ## Variables
-In the context of the script, there are several variables that can change based on your environment. you can (optional) change it based on your environment.
+In the context of the script, there are several variables that you can (optional) change it based on your environment.
 
 **1. Splunk_Frozen_Retention_Policy.sh**
 
