@@ -1,4 +1,4 @@
-# Splunk Frozen path Data Management Scripts
+# Splunk Frozen Bucket (path) Data Management Scripts
 This repository provides a set of Bash scripts designed to manage frozen path data in Splunk environments.
 
 **Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data without any issues.
