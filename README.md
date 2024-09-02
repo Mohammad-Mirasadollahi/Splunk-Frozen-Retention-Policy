@@ -136,7 +136,7 @@ timestamp="2024-08-28T15:35:10+00:00" process_id="1a2b3c" frozen_index="index1" 
 **reason:** The reason for deleting the file, either size_limit_exceeded or retention_days_exceeded, along with the corresponding overage.\
 **message:** A description of the event, indicating that the file was deleted to comply with the policy.\
 
-## Log for Deletion Summary**
+## Log for Deletion Summary
 This log is generated after the script finishes deleting files to summarize the deletion process.
 
 ```
