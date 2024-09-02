@@ -72,12 +72,12 @@ In the context of the script, there are several variables that you can (optional
 1. First, download the repository.
    
  ```
- git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-path-Retention-Policy.git
+ git clone https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy.git
    ```
 2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
  ```
-cd Splunk-Frozen-path-Retention-Policy
+cd Splunk-Frozen-Retention-Policy
 mkdir -p /root/scripts
 mv Splunk_Frozen_Retention_Policy_Scripts.tar.gz /root/scripts/
    ```
