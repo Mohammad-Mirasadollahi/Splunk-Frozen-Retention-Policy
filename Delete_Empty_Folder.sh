@@ -2,7 +2,7 @@
 
 # Base path to check for directories
 FROZEN_PATH="/frozen"
-INDEX_FILE="$PWD/index_list.txt"
+INDEX_FILE="/root/scripts/index_list.txt"
 
 # Function to update the list of indexes
 update_index_list() {
