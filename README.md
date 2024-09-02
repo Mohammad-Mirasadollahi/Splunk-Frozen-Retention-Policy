@@ -77,14 +77,13 @@ In the context of the script, there are several variables that you can (optional
 2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
 
  ```
-cd Splunk-Frozen-Retention-Policy
 mkdir -p /root/scripts
-mv Splunk_Frozen_Retention_Policy_Scripts.tar.gz /root/scripts/
+mv Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz /root/scripts/
    ```
 3. Go to the /root/scripts/ directory and then, run the following command.
 ```
 cd /root/scripts/
-tar xzvf Splunk_Frozen_Retention_Policy_Scripts.tar.gz
+tar xzvf Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz
    ```
 
 4. Then, just run the following command.
