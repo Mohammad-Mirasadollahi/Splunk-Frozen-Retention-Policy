@@ -53,7 +53,7 @@ In the context of the script, there are several variables that you can (optional
 **2. Delete_Empty_Folder.sh**
 
 **FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
-**INDEX_FILE=**"$PWD/index_list.txt": list of all frozen path
+**INDEX_FILE=**"/root/scripts/index_list.txt": list of all frozen path
 
 **3. Splunk_Frozen_Policy_service.sh**
 
