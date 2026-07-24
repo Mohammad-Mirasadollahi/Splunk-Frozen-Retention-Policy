@@ -18,4 +18,4 @@
 - Fallbacks when `openssl` or `bc` are unavailable.
 - Quick Start updated for the `v1.1.0` release asset.
 - **Merged empty-folder cleanup into the main retention script** — empty non-index directories are cleaned in-process; the separate helper and `index_list.txt` are removed.
-- Added `run_real_tests.sh` for verified mock fixtures and per-feature real assertions.
+- Added unified `TEST.sh` (assert suite + `--sample` / `--run`; replaces separate `run_real_tests.sh`).

@@ -20,8 +20,7 @@ Bash scripts to enforce size and retention limits on Splunk frozen bucket paths,
 | `Splunk_Frozen_Retention_Policy.sh` | Main policy: size + retention + empty-dir cleanup |
 | `Splunk_Frozen_Policy_service.sh` | Installs systemd oneshot service + 24h timer |
 | `index_size.conf` | Per-index size (MB) and retention (days) |
-| `TEST.sh` | Optional helper to generate v1.1.0 sample frozen test data (`--run` executes the policy) |
-| `run_real_tests.sh` | Recommended real feature test suite (mock data) |
+| `TEST.sh` | Unified v1.1.0 tests: default assert suite; `--sample` / `--run` for mock data |
 | `CHANGELOG.md` / `RELEASE_NOTES_v1.1.0.md` | Release notes |
 
 `Delete_Empty_Folder.sh` was **removed in v1.1.0** (logic merged into the main script).
@@ -183,23 +182,16 @@ Other actions: `deleted_empty_dir`, `empty_folder_cleanup_done`, `skipped_locked
 
 ## Testing
 
-### Real feature tests (recommended)
-
-Builds verified mock data, validates fixtures first, then asserts each feature against **v1.1.0**:
+Unified entrypoint: **`TEST.sh`** (v1.1.0).
 
 ```bash
-bash ./run_real_tests.sh
-```
-
-### Sample data helper (`TEST.sh`, v1.1.0)
-
-Creates a rich mock tree under `/tmp/frozen_test` and a matching config under `/tmp/frozen_test_work/index_size.conf` (does **not** overwrite the repo `index_size.conf`). Includes age-retention, size-overage, nested dirs, empty index, and an unconfigured index for the v1.1.0 policy.
-
-```bash
-# Build mock data only
+# Real feature assert suite (recommended) — verifies fixtures, runs policy, asserts each feature
 bash ./TEST.sh
 
-# Build mock data and run Splunk_Frozen_Retention_Policy.sh once
+# Build a rich mock frozen tree only (under /tmp/frozen_test)
+bash ./TEST.sh --sample
+
+# Build mock tree and run Splunk_Frozen_Retention_Policy.sh once
 bash ./TEST.sh --run
 ```
 
