@@ -2,28 +2,9 @@
 
 Bash scripts to enforce size and retention limits on Splunk frozen bucket paths, then remove leftover empty directories.
 
-| Item | Value |
-| --- | --- |
-| **Latest release** | **v1.1.0** |
-| **Release package** | `Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz` |
-| **Release URL** | https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/tag/v1.1.0 |
-| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
-
 **Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data.
 
----
-
-## Package contents (v1.1.0)
-
-| File | Purpose |
-| --- | --- |
-| `Splunk_Frozen_Retention_Policy.sh` | Main policy: size + retention + empty-dir cleanup |
-| `Splunk_Frozen_Policy_service.sh` | Installs systemd oneshot service + 24h timer |
-| `index_size.conf` | Per-index size (MB) and retention (days) |
-| `TEST.sh` | Unified v1.1.0 tests: default assert suite; `--sample` / `--run` for mock data |
-| `CHANGELOG.md` / `RELEASE_NOTES_v1.1.0.md` | Release notes |
-
-`Delete_Empty_Folder.sh` was **removed in v1.1.0** (logic merged into the main script).
+**License:** [MIT](LICENSE)
 
 ---
 
@@ -35,6 +16,21 @@ Bash scripts to enforce size and retention limits on Splunk frozen bucket paths,
 4. **Logging** — Append structured events to the log file.
 5. **Empty directory cleanup** — After all indexes, remove empty non-index directories (index roots are kept).
 6. **Skip unconfigured indexes** — Directories not listed in `index_size.conf` are left unchanged (`skipped_unconfigured`).
+
+---
+
+## Package contents
+
+| File | Purpose |
+| --- | --- |
+| `Splunk_Frozen_Retention_Policy.sh` | Main policy: size + retention + empty-dir cleanup |
+| `Splunk_Frozen_Policy_service.sh` | Installs systemd oneshot service + 24h timer |
+| `index_size.conf` | Per-index size (MB) and retention (days) |
+| `TEST.sh` | Unified tests: default assert suite; `--sample` / `--run` for mock data |
+| `CHANGELOG.md` | Change history |
+| `LICENSE` | MIT license |
+
+`Delete_Empty_Folder.sh` was removed (logic merged into the main policy script).
 
 ---
 
@@ -79,24 +75,22 @@ Installer script:
 
 ---
 
-## Installation (v1.1.0) — Quick Start
+## Installation — Quick Start
 
-Use the **v1.1.0** package (not the old `v1.0.0` / tag `Splunk` asset).
+Download the **latest release package** from the [Releases](https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases) page. Exact tag, asset name, and `wget` URL are listed under **Releases** below (not in the overview). Prefer the current release over the old tag `Splunk` / `v1.0.0` asset.
 
 ### 1. Download
 
-```bash
-wget https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/download/v1.1.0/Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
-```
+Use the asset URL from the latest GitHub Release (see **Releases**).
 
 ### 2. Install into `/root/scripts`
 
 ```bash
 mkdir -p /root/scripts
-mv Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz /root/scripts/
+# mv <downloaded-tarball> /root/scripts/
 cd /root/scripts/
-tar xzvf Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
-rm -f Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
+tar xzvf Splunk_Frozen_Retention_Policy_Scripts_*.tar.gz
+rm -f Splunk_Frozen_Retention_Policy_Scripts_*.tar.gz
 chmod 750 Splunk_Frozen_Retention_Policy.sh Splunk_Frozen_Policy_service.sh
 ```
 
@@ -138,10 +132,28 @@ tail -n 50 /var/log/Splunk_Frozen_Data.log
 
 ---
 
-## Upgrade from v1.0.0
+## Releases
+
+Release tag and package details belong in this section only.
+
+| Item | Value |
+| --- | --- |
+| **Tag** | `v1.1.0` |
+| **Package** | `Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz` |
+| **Release page** | https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/tag/v1.1.0 |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
+| **Release notes** | [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) |
+
+### Download (current tag)
+
+```bash
+wget https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/download/v1.1.0/Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
+```
+
+### Upgrade from v1.0.0
 
 1. Stop/disable the old timer if present: `systemctl stop Splunk_Frozen_Policy.timer` (optional).
-2. Install the **v1.1.0** tarball into `/root/scripts` (overwrite scripts).
+2. Install the current release tarball into `/root/scripts` (overwrite scripts).
 3. Remove obsolete `Delete_Empty_Folder.sh` if it is still on disk (no longer used).
 4. Re-run `bash ./Splunk_Frozen_Policy_service.sh` so the oneshot + timer-only unit files are refreshed.
 5. Confirm logs append (history is no longer truncated each run).
@@ -176,16 +188,16 @@ Emitted after cleanup for an index (`deletion_summary` when deletions happened; 
 timestamp="...",process_id="...",frozen_index="other_index",action="skipped_unconfigured",final_frozen_size_mb="120",message="Index not defined in config; left unchanged"
 ```
 
-Other actions: `deleted_empty_dir`, `empty_folder_cleanup_done`, `skipped_locked`.
+Other actions: `deleted_empty_dir`, `empty_folder_cleanup_done`, `skipped_locked`, `delete_failed`.
 
 ---
 
 ## Testing
 
-Unified entrypoint: **`TEST.sh`** (v1.1.0).
+Unified entrypoint: **`TEST.sh`**.
 
 ```bash
-# Real feature assert suite (recommended) — verifies fixtures, runs policy, asserts each feature
+# Real feature assert suite (recommended)
 bash ./TEST.sh
 
 # Build a rich mock frozen tree only (under /tmp/frozen_test)
@@ -202,3 +214,9 @@ bash ./TEST.sh --run
 - Linux with `bash`, `find`, `du`, `flock`, `stat`
 - `openssl` and `bc` optional (fallbacks included)
 - root (or equivalent) for default paths and systemd install
+
+---
+
+## License
+
+This project is released under the [MIT License](LICENSE).
