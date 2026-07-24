@@ -1,174 +1,204 @@
 # Splunk Frozen Bucket (Path) Data Management Scripts
-This repository provides a set of Bash scripts designed to manage frozen bucket (Path) data in Splunk environments.
 
-**Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data without any issues.
+Bash scripts to enforce size and retention limits on Splunk frozen bucket paths, then remove leftover empty directories.
 
-# Overview
-This repository contains two Bash scripts designed to manage and clean up frozen data in a Splunk environment. The primary goal of these scripts is to keep frozen path within predefined limits and prevent excessive storage usage by cleaning up oldet files and directories. The primary script **(Splunk_Frozen_Retention_Policy.sh)** handles Frozen path size and retention management, while the secondary script **(Delete_Empty_Folder.sh)** cleans up empty directories. Both scripts are designed to work together to ensure efficient storage management in environments where frozen data is stored.
+| Item | Value |
+| --- | --- |
+| **Latest release** | **v1.1.0** |
+| **Release package** | `Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz` |
+| **Release URL** | https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/tag/v1.1.0 |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-This script manages frozen path in a Splunk environment and performs the following tasks:
-1. **Frozen Path Monitoring**: It scans the directories containing frozen path to assess their size and retention periods.
-2. **Identifying Overages**: If an Frozen path exceeds the size limit specified in the configuration file or if the retention period of the data exceeds the allowed duration, the script identifies these overages.
-3. **Deleting Old Files**: To bring the Frozen path back within the allowed limits, the script gradually deletes older files from the index until its size is reduced and the retention period is within the permissible range.
-4. **Logging**: All actions, including identifying issues, reasons for file deletions, and a final summary of the index status, are logged for reference.
-5. **Executing an External Script (Delete_Empty_Folder)**: After processing each index, an external script is executed to perform additional tasks. This external script first updates a list of all directories (frozen path) within the specified `FROZEN_PATH` and then recursively checks each directory to identify and delete any empty directories. It ensures that only directories not listed as indexes are deleted if they are found to be empty.
+**Note:** These scripts were developed with the help of ChatGPT and have been tested successfully with terabytes (TB) of data.
 
-# Configuration File 
-## index_size.conf
-The index_size.conf file is a configuration file that contains important settings for managing the frozen path within the script. This file is read by the script to determine the size limits and retention periods for each index. 
+---
 
-**Structure of index_size.conf**
+## Package contents (v1.1.0)
 
-The file is expected to be a simple text file, where each line contains the configuration for a specific index. Each line typically includes three key components: the index name, the size limit, and the retention period. These are separated by commas.
+| File | Purpose |
+| --- | --- |
+| `Splunk_Frozen_Retention_Policy.sh` | Main policy: size + retention + empty-dir cleanup |
+| `Splunk_Frozen_Policy_service.sh` | Installs systemd oneshot service + 24h timer |
+| `index_size.conf` | Per-index size (MB) and retention (days) |
+| `TEST.sh` | Optional helper to generate sample frozen test data |
+| `run_real_tests.sh` | Recommended real feature test suite (mock data) |
+| `CHANGELOG.md` / `RELEASE_NOTES_v1.1.0.md` | Release notes |
 
-Example structure:
+`Delete_Empty_Folder.sh` was **removed in v1.1.0** (logic merged into the main script).
+
+---
+
+## Overview
+
+1. **Frozen path monitoring** — Scan each index directory under `FROZEN_PATH`.
+2. **Overage detection** — Compare size (MB) and oldest-file age (days) to `index_size.conf`.
+3. **Delete oldest files first** — Until size and retention are within limits.
+4. **Logging** — Append structured events to the log file.
+5. **Empty directory cleanup** — After all indexes, remove empty non-index directories (index roots are kept).
+6. **Skip unconfigured indexes** — Directories not listed in `index_size.conf` are left unchanged (`skipped_unconfigured`).
+
+---
+
+## Configuration: `index_size.conf`
+
+Each non-comment line:
+
 ```
 index=index1,size=5000,retention=30
 index=index2,size=7000,retention=45
 index=index3,size=6000,retention=60
 ```
--------------------------------------------------------------------------
 
-**index:**\
-The name of the index. This is the identifier that the script uses to apply specific limits and rules to the data stored in Frozen path's directory. For example, The script will monitor the directory associated with index1 frozen path.
+Blank lines and lines starting with `#` are ignored.
 
-**size:**\
-This is the maximum allowed size for the index's frozen data, expressed in MB (Megabytes). If the total size of the files in the frozen path directory exceeds this limit, the script will initiate the process of deleting the oldest files to bring the Frozen path size back within the limit. For example If the total size of files in the index1 frozen path directory exceeds 5000 MB, the script will start deleting the oldest files until the total size is under 5000 MB. 
+| Field | Meaning |
+| --- | --- |
+| `index` | Directory name under `FROZEN_PATH` |
+| `size` | Max frozen size in **MB** |
+| `retention` | Max age in **days** of any file (mtime vs now). Oldest files are deleted until the oldest remaining file is within this window |
 
-**retention:**\
-This is the maximum number of days that data in the index frozen path can be retained. If any data in the index frozen path is older than this retention period, the script will delete the oldest files first until the data within the directory complies with the retention policy. For example: If any file in the index1 frozen directory is older than 30 days, the script will delete it to comply with the retention policy.
+If an index directory exists but is missing from the config, it is **not** modified; only a skip log line is written.
 
-**Note:** If a Index Frozen path exists in the frozen path but is not defined in the index_size.conf, nothing will happen to that Index Frozen path, and only its log will be recorded.
+---
 
-## Variables
-In the context of the script, there are several variables that you can (optional) change it based on your environment.
+## Variables (optional)
 
-**1. Splunk_Frozen_Retention_Policy.sh**
+Edit near the top of `Splunk_Frozen_Retention_Policy.sh` (or export before run):
 
-**FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
-**LOG_FILE=**"/var/log/Splunk_Frozen_Data.log": The log file where the script records its operations.\
-**CONFIG_FILE=**"/root/scripts/index_size.conf": Path to the configuration file that defines size and retention limits for each index frozen path.\
-**SCRIPT_PATH=**"/root/scripts/Delete_Empty_Folder.sh": Path to the external script (Delete_Empty_Folder.sh).
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `FROZEN_PATH` | `/frozen` | Frozen data root |
+| `LOG_FILE` | `/var/log/Splunk_Frozen_Data.log` | Append-only log |
+| `CONFIG_FILE` | `/root/scripts/index_size.conf` | Limits config |
+| `LOCK_FILE` | `/var/lock/Splunk_Frozen_Retention_Policy.lock` | Prevent overlapping runs |
 
-**2. Delete_Empty_Folder.sh**
+Installer script:
 
-**FROZEN_PATH=**"/frozen": The directory containing Frozen path data.\
-**INDEX_FILE=**"/root/scripts/index_list.txt": list of all frozen path
+| Variable | Default |
+| --- | --- |
+| `SCRIPT_PATH` | `/root/scripts/Splunk_Frozen_Retention_Policy.sh` |
 
-**3. Splunk_Frozen_Policy_service.sh**
+---
 
-**SCRIPT_PATH=**"/root/scripts/Splunk_Frozen_Retention_Policy.sh": The full path of the Splunk_Frozen_Retention_Policy.sh
+## Installation (v1.1.0) — Quick Start
 
-# Quick Start
+Use the **v1.1.0** package (not the old `v1.0.0` / tag `Splunk` asset).
 
-**Quick Start Guide:**
+### 1. Download
 
-1. First, download the repository.
-   
- ```
- wget https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/download/Splunk/Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz
-   ```
-2. Move all of them into the `/root/scripts` directory. If the directory does not exist, create it.
+```bash
+wget https://github.com/Mohammad-Mirasadollahi/Splunk-Frozen-Retention-Policy/releases/download/v1.1.0/Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
+```
 
- ```
+### 2. Install into `/root/scripts`
+
+```bash
 mkdir -p /root/scripts
-mv Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz /root/scripts/
-   ```
-3. Go to the /root/scripts/ directory and then, run the following command.
-```
+mv Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz /root/scripts/
 cd /root/scripts/
-tar xzvf Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz
-rm -rf Splunk_Frozen_Retention_Policy_Scripts_v1.0.0.tar.gz
-   ```
-
-4. Then, just run the following command.
+tar xzvf Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
+rm -f Splunk_Frozen_Retention_Policy_Scripts_v1.1.0.tar.gz
+chmod 750 Splunk_Frozen_Retention_Policy.sh Splunk_Frozen_Policy_service.sh
 ```
+
+### 3. Edit configuration
+
+```bash
+vi /root/scripts/index_size.conf
+```
+
+Align `FROZEN_PATH` / `CONFIG_FILE` / `LOG_FILE` in `Splunk_Frozen_Retention_Policy.sh` with your environment if they differ from the defaults.
+
+### 4. Install and start the systemd timer
+
+```bash
 bash ./Splunk_Frozen_Policy_service.sh
-   ```
-5. Finally, check the service status.
 ```
-service Splunk_Frozen_Policy status
-   ```
-When the Splunk_Frozen_Policy_service.sh script is executed, a service named **Splunk_Frozen_Policy** will be created. This service runs the Splunk_Frozen_Retention_Policy.sh script every 24 hours to check frozen path and apply retention policies. If you want to modify 24 hours you must edit /etc/systemd/system/Splunk_Frozen_Policy.timer and change **OnUnitActiveSec** to what ever value you want.
 
-# Logging
+### 5. Verify
 
-## Log for Exceeding Limits
-This log is generated when an index exceeds its size or retention limits.
-
+```bash
+systemctl status Splunk_Frozen_Policy.timer
+systemctl list-timers | grep Splunk_Frozen
 ```
-timestamp="2024-08-28T15:34:20+00:00" process_id="1a2b3c" frozen_index="index1" action="exceeds_limit" reason="size_limit_exceeded" overage_mb="1500" overage_days="0" exceeds_limit_frozen_size_mb="6500" frozen_size_limit_mb="5000" current_frozen_days_with_logs="20" frozen_retention_days="30" message="Index exceeds the defined limits."
-   ```
 
-**timestamp:** The exact date and time when the log was created, formatted as YYYY-MM-DDTHH:MM:SS+TZ.\
-**process_id:** A unique 6-digit hexadecimal identifier generated for each index processing.\
-**frozen_index:** The name of the index that is being processed.\
-**action:** This field is set to "exceeds_limit", indicating that the index has surpassed its allowed limits.\
-**reason:** A description of why the index exceeds the limits. This could be size_limit_exceeded, retention_days_exceeded, or both.\
-**overage_mb:** The amount of storage (in MB) by which the index exceeds its size limit.\
-**overage_days:** The number of days by which the index exceeds its retention period.\
-**exceeds_limit_frozen_size_mb:** The total size of the index (in MB) at the time the limit was exceeded.\
-**frozen_size_limit_mb:** The size limit (in MB) set for the index in the configuration.\
-**current_frozen_days_with_logs:** The number of days for which the index has log files.\
-**frozen_retention_days:** The retention period (in days) set for the index in the configuration.\
-**message:** A description of the event, typically stating that the index exceeds the defined limits.
+The installer creates a **Type=oneshot** service and enables **only** `Splunk_Frozen_Policy.timer` (every 24 hours by default). To change the interval:
 
-## Log for Deleting Files
-This log is generated when the script deletes files from an index to bring it within limits.
-
+```bash
+vi /etc/systemd/system/Splunk_Frozen_Policy.timer   # edit OnUnitActiveSec
+systemctl daemon-reload
+systemctl restart Splunk_Frozen_Policy.timer
 ```
-timestamp="2024-08-28T15:35:10+00:00" process_id="1a2b3c" frozen_index="index1" action="deleting_file" deleted_file="/tmp/frozen_test/index1/log2023-08-01.log" deleted_file_size_mb="500" deleted_file_age_days="27" reason="size_limit_exceeded" message="File deleted to comply with size limit."
-   ```
 
-**timestamp:** The exact date and time when the log was created.\
-**process_id:** The unique identifier for the current index processing.\
-**frozen_index:** The name of the index being processed.\
-**action:** This field is set to "deleting_file", indicating that a file is being deleted.\
-**deleted_file:** The path to the file that was deleted.\
-**deleted_file_size_mb:** The size of the deleted file in MB.\
-**deleted_file_age_days:** The age of the deleted file in days.\
-**reason:** The reason for deleting the file, either size_limit_exceeded or retention_days_exceeded, along with the corresponding overage.\
-**message:** A description of the event, indicating that the file was deleted to comply with the policy.\
+### Manual one-shot run (without waiting for the timer)
 
-## Log for Deletion Summary
-This log is generated after the script finishes deleting files to summarize the deletion process.
+```bash
+bash /root/scripts/Splunk_Frozen_Retention_Policy.sh
+tail -n 50 /var/log/Splunk_Frozen_Data.log
+```
+
+---
+
+## Upgrade from v1.0.0
+
+1. Stop/disable the old timer if present: `systemctl stop Splunk_Frozen_Policy.timer` (optional).
+2. Install the **v1.1.0** tarball into `/root/scripts` (overwrite scripts).
+3. Remove obsolete `Delete_Empty_Folder.sh` if it is still on disk (no longer used).
+4. Re-run `bash ./Splunk_Frozen_Policy_service.sh` so the oneshot + timer-only unit files are refreshed.
+5. Confirm logs append (history is no longer truncated each run).
+
+---
+
+## Logging
+
+Logs are **appended** to `LOG_FILE`.
+
+### Exceeds limits
 
 ```
-timestamp="2024-08-28T15:37:45+00:00" process_id="1a2b3c" frozen_index="index1" action="deletion_summary" deleted_size_mb="1500" time_taken_sec="155" message="Deleted a total of 1500 MB to bring the index within limits."
-   ```
+timestamp="2024-08-28T15:34:20+00:00",process_id="1a2b3c",frozen_index="index1",action="exceeds_limit",reason="size_limit_exceeded",overage_mb=1500,exceeds_limit_frozen_size_mb="6500",frozen_size_limit_mb="5000",current_frozen_days_with_logs="20",frozen_retention_days="30",message="Index exceeds defined limits"
+```
 
-**timestamp:** The exact date and time when the log was created.\
-**process_id:** The unique identifier for the current index processing.\
-**frozen_index:** The name of the index being processed.\
-**action:** This field is set to "deletion_summary", indicating a summary of the deletion process.\
-**deleted_size_mb:** The total amount of data (in MB) deleted during the process.\
-**time_taken_sec:** The total time (in seconds) it took to delete the files and bring the index within limits.\
-**message:** A description of the event, typically stating the total size deleted and the time taken.
+`current_frozen_days_with_logs` = age in days of the **oldest** file (mtime vs now).
 
-## Final Summary Log
-This log provides a summary of the index status after processing, regardless of whether limits were exceeded.
+### Deleting a file
 
 ```
-timestamp="2024-08-28T15:40:00+00:00" process_id="1a2b3c" frozen_index="index1" action="final_summary" earliest_log_date="2023-08-01" latest_log_date="2024-08-28" final_frozen_size_mb="5000" current_frozen_days_with_logs="27" message="Final index status after processing."
-   ```
+timestamp="...",process_id="...",frozen_index="index1",action="deleting_file",deleted_file="...",deleted_file_size_mb="...",deleted_file_age_days="...",reason=size_limit_exceeded,overage_mb=...,message="Deleting file to comply with policy"
+```
 
-**timestamp:** The exact date and time when the log was created.\
-**process_id:** The unique identifier for the current index processing.\
-**frozen_index:** The name of the index being processed.\
-**action:** This field is set to "final_summary", indicating the final status after processing.\
-**earliest_log_date:** The date of the earliest log file in the index (if available).\
-**latest_log_date:** The date of the latest log file in the index (if available).\
-**final_frozen_size_mb:** The total size of the index (in MB) after processing.\
-**current_frozen_days_with_logs:** The number of days for which the index has log files after processing.\
-**message:** A description of the final status of the index after processing.
-   
-# Test Logs
-The TEST.sh script is used to create various log files in the /tmp/frozen_test directory, which can be used for testing the Splunk_Frozen_Retention_Policy.sh script.
+### Deletion summary / final summary
 
-By editing this script, you can change the FROZEN_PATH directory for creating test logs in your desired path.
-   
-   
-   
-   
-   
-   
+Emitted after cleanup for an index (`deletion_summary` when deletions happened; `final_summary` always for configured indexes).
+
+### Skipped unconfigured index
+
+```
+timestamp="...",process_id="...",frozen_index="other_index",action="skipped_unconfigured",final_frozen_size_mb="120",message="Index not defined in config; left unchanged"
+```
+
+Other actions: `deleted_empty_dir`, `empty_folder_cleanup_done`, `skipped_locked`.
+
+---
+
+## Testing
+
+### Real feature tests (recommended)
+
+Builds verified mock data, validates fixtures first, then asserts each feature:
+
+```bash
+bash ./run_real_tests.sh
+```
+
+### Legacy sample data helper
+
+`TEST.sh` can create sample files under `/tmp/frozen_test` for manual experiments. Adjust paths inside the script as needed.
+
+---
+
+## Requirements
+
+- Linux with `bash`, `find`, `du`, `flock`, `stat`
+- `openssl` and `bc` optional (fallbacks included)
+- root (or equivalent) for default paths and systemd install

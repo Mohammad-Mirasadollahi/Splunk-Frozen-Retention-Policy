@@ -1,44 +1,52 @@
 #!/bin/bash
+# Install systemd oneshot + timer for Splunk Frozen Retention Policy v1.1.0
 
-# Variables
+set -euo pipefail
+
 SERVICE_PATH="/etc/systemd/system/Splunk_Frozen_Policy.service"
-SCRIPT_PATH="/root/scripts/Splunk_Frozen_Retention_Policy.sh"
 TIMER_PATH="/etc/systemd/system/Splunk_Frozen_Policy.timer"
+SCRIPT_PATH="${SCRIPT_PATH:-/root/scripts/Splunk_Frozen_Retention_Policy.sh}"
 
-# Create the service file
-echo "[Unit]
+if [[ ! -f "$SCRIPT_PATH" ]]; then
+    echo "Error: retention script not found: $SCRIPT_PATH" >&2
+    exit 1
+fi
+
+cat >"$SERVICE_PATH" <<EOF
+[Unit]
 Description=Splunk Frozen Policy Service
 After=network.target
 
 [Service]
-ExecStart=$SCRIPT_PATH
+Type=oneshot
+ExecStart=/bin/bash $SCRIPT_PATH
 User=root
-Restart=on-failure
-RestartSec=30s
+Nice=10
 StandardOutput=journal
 StandardError=journal
+EOF
 
-[Install]
-WantedBy=multi-user.target" > $SERVICE_PATH
-
-# Create the timer file
-echo "[Unit]
+cat >"$TIMER_PATH" <<EOF
+[Unit]
 Description=Run Splunk Frozen Policy Service every 24 hours
 
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=24h
+Unit=Splunk_Frozen_Policy.service
+Persistent=true
 
 [Install]
-WantedBy=timers.target" > $TIMER_PATH
+WantedBy=timers.target
+EOF
 
-# Give execution permissions to the script
-chmod 750 $SCRIPT_PATH
+chmod 750 "$SCRIPT_PATH"
 
-# Reload the systemd daemon, enable and start the service and timer
 systemctl daemon-reload
-systemctl enable Splunk_Frozen_Policy.service
+# Timer-only enable: avoid dual boot start via WantedBy=multi-user on the service unit
+systemctl disable Splunk_Frozen_Policy.service 2>/dev/null || true
 systemctl enable Splunk_Frozen_Policy.timer
 systemctl start Splunk_Frozen_Policy.timer
 
-echo "Service and timer created and started successfully."
+echo "Timer created and started successfully (oneshot service, timer-only enable)."
+echo "Check status with: systemctl status Splunk_Frozen_Policy.timer"

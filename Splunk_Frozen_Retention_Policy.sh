@@ -1,191 +1,250 @@
 #!/bin/bash
+# Splunk Frozen Retention Policy v1.1.0
+# Enforces per-index frozen size (MB) and retention (oldest file age in days).
 
-# Do not output STDERR messages
-exec 2>/dev/null
+set -u
 
-# Set the value for the frozen path
-FROZEN_PATH="/frozen"
+FROZEN_PATH="${FROZEN_PATH:-/frozen}"
+LOG_FILE="${LOG_FILE:-/var/log/Splunk_Frozen_Data.log}"
+CONFIG_FILE="${CONFIG_FILE:-/root/scripts/index_size.conf}"
+LOCK_FILE="${LOCK_FILE:-/var/lock/Splunk_Frozen_Retention_Policy.lock}"
 
-# Log file path
-LOG_FILE="/var/log/Splunk_Frozen_Data.log"
-
-# Configuration file path
-CONFIG_FILE="/root/scripts/index_size.conf"
-
-# Specify the path to the script you want to execute after each index processing
-SCRIPT_PATH="/root/scripts/Delete_Empty_Folder.sh"
-
-# Read the configuration file and store the size limits and retention days in associative arrays
 declare -A INDEX_SIZE_LIMITS
 declare -A INDEX_RETENTION_DAYS
+declare -A INDEX_ROOTS
 
-# Generate a 6-digit hexadecimal process ID
 generate_process_id() {
-    openssl rand -hex 3 | tr 'a-f' 'A-F'
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 3 | tr 'a-f' 'A-F'
+    else
+        printf '%04X%02X' "$RANDOM" "$((RANDOM % 256))"
+    fi
 }
 
-while IFS=, read -r key value retention
-do
-    index=$(echo "$key" | awk -F= '{print $2}')
-    size=$(echo "$value" | awk -F= '{print $2}')
-    days=$(echo "$retention" | awk -F= '{print $2}')
+kb_to_mb() {
+    local kb="$1"
+    if command -v bc >/dev/null 2>&1; then
+        echo "scale=2; ${kb}/1024" | bc
+    else
+        awk -v kb="${kb}" 'BEGIN { printf "%.2f", kb/1024 }'
+    fi
+}
+
+log_line() {
+    echo "$1"
+}
+
+# Single-instance guard (timer overlap / manual re-run)
+mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+    mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+    echo "timestamp=\"$CURR_DATE\",action=\"skipped_locked\",message=\"Another Splunk Frozen Retention Policy run is active\"" >>"$LOG_FILE"
+    exit 0
+fi
+
+# Append logs; keep stderr visible in the same log
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+exec >>"$LOG_FILE" 2>&1
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+    log_line "timestamp=\"$CURR_DATE\",action=\"error\",message=\"Config file not found: $CONFIG_FILE\""
+    exit 1
+fi
+
+if [[ ! -d "$FROZEN_PATH" ]]; then
+    CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+    log_line "timestamp=\"$CURR_DATE\",action=\"error\",message=\"Frozen path not found: $FROZEN_PATH\""
+    exit 1
+fi
+
+# Load config (skip blank lines and # comments)
+while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%$'\r'}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+    IFS=, read -r key value retention <<<"$line"
+    index=$(awk -F= '{print $2}' <<<"$key" | tr -d '[:space:]')
+    size=$(awk -F= '{print $2}' <<<"$value" | tr -d '[:space:]')
+    days=$(awk -F= '{print $2}' <<<"$retention" | tr -d '[:space:]')
+
+    [[ -z "$index" || -z "$size" || -z "$days" ]] && continue
+    [[ "$size" =~ ^[0-9]+$ && "$days" =~ ^[0-9]+$ ]] || continue
+
     INDEX_SIZE_LIMITS["$index"]=$size
     INDEX_RETENTION_DAYS["$index"]=$days
-done < "$CONFIG_FILE"
+done <"$CONFIG_FILE"
 
-# Redirect output to log file and overwrite it
-exec > "$LOG_FILE"
+refresh_index_metrics() {
+    local dir="$1"
+    FROZEN_SIZE_MB=$(du -cms "$dir" 2>/dev/null | awk '/total/ {print $1; exit}')
+    FROZEN_SIZE_MB=${FROZEN_SIZE_MB:-0}
 
-# Initialize variables to track the earliest and latest log dates across all indexes
-GLOBAL_EARLIEST_LOG_DATE=""
-GLOBAL_LATEST_LOG_DATE=""
+    EARLIEST_LOG_DATE=$(find "$dir" -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | head -1)
+    LATEST_LOG_DATE=$(find "$dir" -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | tail -1)
 
-# Iterate through each index in the frozen path
+    OLDEST_FILE_EPOCH=$(find "$dir" -type f -printf '%T@\n' 2>/dev/null | sort -n | head -1)
+    if [[ -n "${OLDEST_FILE_EPOCH:-}" ]]; then
+        OLDEST_AGE_DAYS=$(( ( $(date +%s) - ${OLDEST_FILE_EPOCH%.*} ) / (60 * 60 * 24) ))
+        FILE_COUNT=$(find "$dir" -type f 2>/dev/null | wc -l)
+    else
+        OLDEST_AGE_DAYS=0
+        FILE_COUNT=0
+        EARLIEST_LOG_DATE=""
+        LATEST_LOG_DATE=""
+    fi
+}
+
+index_exceeds_limits() {
+    local size_limit="$1"
+    local retention_days="$2"
+    [[ "$FROZEN_SIZE_MB" -gt "$size_limit" ]] && return 0
+    [[ "$FILE_COUNT" -gt 0 && "$OLDEST_AGE_DAYS" -gt "$retention_days" ]] && return 0
+    return 1
+}
+
+# Recursively remove empty non-index directories under an index root.
+delete_empty_dirs() {
+    local dir="${1%/}"
+    local sub_dir
+
+    for sub_dir in "$dir"/*; do
+        if [[ -d "$sub_dir" ]]; then
+            delete_empty_dirs "$sub_dir"
+        fi
+    done
+
+    # Never remove top-level index directories themselves
+    if [[ -n "${INDEX_ROOTS[$dir]+x}" ]]; then
+        return 0
+    fi
+
+    if [[ -d "$dir" ]] && [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]]; then
+        if rmdir "$dir" 2>/dev/null; then
+            CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+            log_line "timestamp=\"$CURR_DATE\",action=\"deleted_empty_dir\",deleted_dir=\"$dir\",message=\"Removed empty directory\""
+        fi
+    fi
+}
+
+cleanup_empty_folders() {
+    local index_dir
+    INDEX_ROOTS=()
+    shopt -s nullglob
+    for index_dir in "$FROZEN_PATH"/*; do
+        if [[ -d "$index_dir" ]]; then
+            INDEX_ROOTS["${index_dir%/}"]=1
+        fi
+    done
+    for index_dir in "$FROZEN_PATH"/*; do
+        if [[ -d "$index_dir" ]]; then
+            delete_empty_dirs "$index_dir"
+        fi
+    done
+    shopt -u nullglob
+}
+
+shopt -s nullglob
 for _dir in "$FROZEN_PATH"/*/
 do
-    # Generate a process ID for the current index
     PROCESS_ID=$(generate_process_id)
+    CURR_IDX=$(basename "${_dir%/}")
 
-    # Extract the index name from the directory path
-    CURR_IDX=$(basename "$_dir")
-
-    # Calculate the total size of the index directory in MB
-    FROZEN_SIZE_MB=$(du -cms "$_dir" | grep 'total' | awk '{print $1}')
-
-    # Find the earliest and latest log file dates in the index directory
-    EARLIEST_LOG_DATE=$(find "$_dir" -type f -printf '%TY-%Tm-%Td\n' | sort | head -1)
-    LATEST_LOG_DATE=$(find "$_dir" -type f -printf '%TY-%Tm-%Td\n' | sort | tail -1)
-
-    # Update the global earliest and latest log dates
-    if [[ -z "$GLOBAL_EARIEST_LOG_DATE" || "$EARLIEST_LOG_DATE" < "$GLOBAL_EARLIEST_LOG_DATE" ]]; then
-        GLOBAL_EARLIEST_LOG_DATE="$EARLIEST_LOG_DATE"
-    fi
-    if [[ -z "$GLOBAL_LATEST_LOG_DATE" || "$LATEST_LOG_DATE" > "$GLOBAL_LATEST_LOG_DATE" ]]; then
-        GLOBAL_LATEST_LOG_DATE="$LATEST_LOG_DATE"
+    if [[ -z "${INDEX_SIZE_LIMITS[$CURR_IDX]+x}" ]]; then
+        refresh_index_metrics "$_dir"
+        CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+        log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"skipped_unconfigured\",final_frozen_size_mb=\"$FROZEN_SIZE_MB\",message=\"Index not defined in config; left unchanged\""
+        continue
     fi
 
-    # Calculate the number of days between the earliest and latest log files
-    DAYS_WITH_LOGS=$(( ( $(date -d "$LATEST_LOG_DATE" +%s) - $(date -d "$EARLIEST_LOG_DATE" +%s) ) / (60*60*24) ))
+    SIZE_LIMIT=${INDEX_SIZE_LIMITS[$CURR_IDX]}
+    RETENTION_DAYS=${INDEX_RETENTION_DAYS[$CURR_IDX]}
 
-    # Initialize variables for logging the action
-    EXCEEDS_LIMIT=false
+    refresh_index_metrics "$_dir"
 
-    # Check if the index size exceeds the limit or retention days are exceeded
-    if [ ${INDEX_SIZE_LIMITS[$CURR_IDX]} -lt $FROZEN_SIZE_MB ] || [ $DAYS_WITH_LOGS -gt ${INDEX_RETENTION_DAYS[$CURR_IDX]} ]; then
-        EXCEEDS_LIMIT=true
+    if index_exceeds_limits "$SIZE_LIMIT" "$RETENTION_DAYS"; then
         START_TIME=$(date +%s)
-
-        # Initialize variables for reason and overages
         REASON=""
-        OVERAGE_MB=""
-        OVERAGE_DAYS=""
+        OVERAGES=""
 
-        # Check if size limit is exceeded
-        if [ ${INDEX_SIZE_LIMITS[$CURR_IDX]} -lt $FROZEN_SIZE_MB ]; then
-            SIZE_OVERAGE=$((FROZEN_SIZE_MB - ${INDEX_SIZE_LIMITS[$CURR_IDX]}))
+        if [[ "$FROZEN_SIZE_MB" -gt "$SIZE_LIMIT" ]]; then
+            SIZE_OVERAGE=$((FROZEN_SIZE_MB - SIZE_LIMIT))
             REASON="size_limit_exceeded"
-            OVERAGE_MB="overage_mb=$SIZE_OVERAGE"
+            OVERAGES="overage_mb=$SIZE_OVERAGE"
         fi
 
-        # Check if retention days limit is exceeded
-        if [ $DAYS_WITH_LOGS -gt ${INDEX_RETENTION_DAYS[$CURR_IDX]} ]; then
-            RETENTION_OVERAGE=$((DAYS_WITH_LOGS - ${INDEX_RETENTION_DAYS[$CURR_IDX]}))
-            if [ -n "$REASON" ]; then
+        if [[ "$FILE_COUNT" -gt 0 && "$OLDEST_AGE_DAYS" -gt "$RETENTION_DAYS" ]]; then
+            RETENTION_OVERAGE=$((OLDEST_AGE_DAYS - RETENTION_DAYS))
+            if [[ -n "$REASON" ]]; then
                 REASON="$REASON | retention_days_exceeded"
             else
                 REASON="retention_days_exceeded"
             fi
-            OVERAGE_DAYS="overage_days=$RETENTION_OVERAGE"
-        fi
-
-        # Combine the overage information
-        OVERAGES=""
-        if [ -n "$OVERAGE_MB" ]; then
-            OVERAGES="$OVERAGE_MB"
-        fi
-        if [ -n "$OVERAGE_DAYS" ]; then
-            if [ -n "$OVERAGES" ]; then
-                OVERAGES="$OVERAGES,$OVERAGE_DAYS"
+            if [[ -n "$OVERAGES" ]]; then
+                OVERAGES="$OVERAGES,overage_days=$RETENTION_OVERAGE"
             else
-                OVERAGES="$OVERAGE_DAYS"
+                OVERAGES="overage_days=$RETENTION_OVERAGE"
             fi
         fi
 
-        # Log the event of exceeding limits with detailed reasons (update timestamp for each log)
         CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
-        echo "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"exceeds_limit\",reason=\"$REASON\",$OVERAGES,exceeds_limit_frozen_size_mb=\"$FROZEN_SIZE_MB\",frozen_size_limit_mb=\"${INDEX_SIZE_LIMITS[$CURR_IDX]}\",current_frozen_days_with_logs=\"$DAYS_WITH_LOGS\",frozen_retention_days=\"${INDEX_RETENTION_DAYS[$CURR_IDX]}\",message=\"Index exceeds defined limits\""
+        log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"exceeds_limit\",reason=\"$REASON\",$OVERAGES,exceeds_limit_frozen_size_mb=\"$FROZEN_SIZE_MB\",frozen_size_limit_mb=\"$SIZE_LIMIT\",current_frozen_days_with_logs=\"$OLDEST_AGE_DAYS\",frozen_retention_days=\"$RETENTION_DAYS\",message=\"Index exceeds defined limits\""
 
-        # Initialize the variable to keep track of deleted size
         DELETED_SIZE=0
 
-        # Start deleting files until the index is within size and retention limits
-        while [ ${INDEX_SIZE_LIMITS[$CURR_IDX]} -lt $FROZEN_SIZE_MB ] || [ $DAYS_WITH_LOGS -gt ${INDEX_RETENTION_DAYS[$CURR_IDX]} ]; do
-            # Find the oldest file in the index directory
-            OLDEST_FILE=$(find "$_dir" -type f -printf '%T+ %p\n' | sort | head -1 | awk '{print $2}')
-            FILE_SIZE=$(du -k "$OLDEST_FILE" | cut -f1)
-            FILE_SIZE_MB=$(echo "scale=2; $FILE_SIZE/1024" | bc)
-
-            # Calculate the age of the file in days
-            FILE_DATE=$(stat -c %Y "$OLDEST_FILE")
-            FILE_AGE_DAYS=$(( ( $(date +%s) - FILE_DATE ) / (60*60*24) ))
-
-            # Accumulate the total deleted size
-            DELETED_SIZE=$((DELETED_SIZE + FILE_SIZE))
-            DELETED_REASON=""
-
-            # Determine the reason for file deletion
-            if [ ${INDEX_SIZE_LIMITS[$CURR_IDX]} -lt $FROZEN_SIZE_MB ]; then
-                SIZE_OVERAGE=$((FROZEN_SIZE_MB - ${INDEX_SIZE_LIMITS[$CURR_IDX]}))
-                DELETED_REASON="reason=size_limit_exceeded,overage_mb=$SIZE_OVERAGE"
-            elif [ $FILE_AGE_DAYS -gt ${INDEX_RETENTION_DAYS[$CURR_IDX]} ]; then
-                RETENTION_OVERAGE=$((FILE_AGE_DAYS - ${INDEX_RETENTION_DAYS[$CURR_IDX]}))
-                DELETED_REASON="reason=retention_days_exceeded,overage_days=$RETENTION_OVERAGE"
+        while index_exceeds_limits "$SIZE_LIMIT" "$RETENTION_DAYS"; do
+            OLDEST_FILE=$(find "$_dir" -type f -printf '%T+ %p\n' 2>/dev/null | sort | head -1 | awk '{ $1=""; sub(/^ /,""); print }')
+            if [[ -z "$OLDEST_FILE" || ! -f "$OLDEST_FILE" ]]; then
+                CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+                log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"delete_loop_stop\",message=\"No deletable files remain\""
+                break
             fi
 
-            # Log the file deletion event (update timestamp for each log)
+            FILE_SIZE=$(du -k "$OLDEST_FILE" 2>/dev/null | cut -f1)
+            FILE_SIZE=${FILE_SIZE:-0}
+            FILE_SIZE_MB=$(kb_to_mb "$FILE_SIZE")
+            FILE_DATE=$(stat -c %Y "$OLDEST_FILE")
+            FILE_AGE_DAYS=$(( ( $(date +%s) - FILE_DATE ) / (60 * 60 * 24) ))
+
+            DELETED_REASON=""
+            if [[ "$FROZEN_SIZE_MB" -gt "$SIZE_LIMIT" ]]; then
+                SIZE_OVERAGE=$((FROZEN_SIZE_MB - SIZE_LIMIT))
+                DELETED_REASON="reason=size_limit_exceeded,overage_mb=$SIZE_OVERAGE"
+            elif [[ "$FILE_AGE_DAYS" -gt "$RETENTION_DAYS" ]]; then
+                RETENTION_OVERAGE=$((FILE_AGE_DAYS - RETENTION_DAYS))
+                DELETED_REASON="reason=retention_days_exceeded,overage_days=$RETENTION_OVERAGE"
+            else
+                # Should not happen; stop to avoid a tight loop
+                break
+            fi
+
             CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
-            echo "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"deleting_file\",deleted_file=\"$OLDEST_FILE\",deleted_file_size_mb=\"$FILE_SIZE_MB\",deleted_file_age_days=\"$FILE_AGE_DAYS\",$DELETED_REASON,message=\"Deleting file to comply with policy\""
+            log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"deleting_file\",deleted_file=\"$OLDEST_FILE\",deleted_file_size_mb=\"$FILE_SIZE_MB\",deleted_file_age_days=\"$FILE_AGE_DAYS\",$DELETED_REASON,message=\"Deleting file to comply with policy\""
 
-            # Delete the oldest file
-            rm "$OLDEST_FILE"
-
-            # Recalculate the directory size after deletion
-            FROZEN_SIZE_MB=$(du -cms "$_dir" | grep 'total' | awk '{print $1}')
-
-            # Update the earliest log date and recalculate the days with logs
-            EARLIEST_LOG_DATE=$(find "$_dir" -type f -printf '%TY-%Tm-%Td\n' | sort | head -1)
-            LATEST_LOG_DATE=$(find "$_dir" -type f -printf '%TY-%Tm-%Td\n' | sort | tail -1)
-            DAYS_WITH_LOGS=$(( ( $(date -d "$LATEST_LOG_DATE" +%s) - $(date -d "$EARLIEST_LOG_DATE" +%s) ) / (60*60*24) ))
+            rm -f -- "$OLDEST_FILE"
+            DELETED_SIZE=$((DELETED_SIZE + FILE_SIZE))
+            refresh_index_metrics "$_dir"
         done
 
-        # Calculate the time taken for the deletion process
         END_TIME=$(date +%s)
         TIME_TAKEN=$((END_TIME - START_TIME))
-
-        # Calculate and log the total size deleted after processing (update timestamp for each log)
-        DELETED_SIZE_MB=$(echo "scale=2; $DELETED_SIZE/1024" | bc)
+        DELETED_SIZE_MB=$(kb_to_mb "$DELETED_SIZE")
         CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
-        echo "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"deletion_summary\",deleted_size_mb=\"$DELETED_SIZE_MB\",time_taken_sec=\"$TIME_TAKEN\",message=\"Total size deleted and time taken to bring index within limits\""
+        log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"deletion_summary\",deleted_size_mb=\"$DELETED_SIZE_MB\",time_taken_sec=\"$TIME_TAKEN\",message=\"Total size deleted and time taken to bring index within limits\""
     fi
 
-    # Log a final summary for each index, regardless of whether limits were exceeded or not (update timestamp for each log)
     CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
     if [[ -n "$EARLIEST_LOG_DATE" && -n "$LATEST_LOG_DATE" ]]; then
-        echo "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"final_summary\",earliest_log_date=\"$EARLIEST_LOG_DATE\",latest_log_date=\"$LATEST_LOG_DATE\",final_frozen_size_mb=\"$FROZEN_SIZE_MB\",current_frozen_days_with_logs=\"$DAYS_WITH_LOGS\",message=\"Final summary after processing\""
+        log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"final_summary\",earliest_log_date=\"$EARLIEST_LOG_DATE\",latest_log_date=\"$LATEST_LOG_DATE\",final_frozen_size_mb=\"$FROZEN_SIZE_MB\",current_frozen_days_with_logs=\"$OLDEST_AGE_DAYS\",message=\"Final summary after processing\""
     else
-        echo "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"final_summary\",final_frozen_size_mb=\"$FROZEN_SIZE_MB\",current_frozen_days_with_logs=\"$DAYS_WITH_LOGS\",message=\"Final summary after processing\""
+        log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"final_summary\",final_frozen_size_mb=\"$FROZEN_SIZE_MB\",current_frozen_days_with_logs=\"$OLDEST_AGE_DAYS\",message=\"Final summary after processing\""
     fi
 done
+shopt -u nullglob
 
-	# Execute the external script
-	if [ -x "$SCRIPT_PATH" ]; then
-		bash "$SCRIPT_PATH"
-	else
-		echo "Script at $SCRIPT_PATH is not executable. Setting execute permission."
-		chmod 750 "$SCRIPT_PATH"
-		if [ $? -eq 0 ]; then
-			bash "$SCRIPT_PATH"
-		else
-			echo "Error: Could not set execute permission for $SCRIPT_PATH."
-		fi
-	fi
+cleanup_empty_folders
+CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+log_line "timestamp=\"$CURR_DATE\",action=\"empty_folder_cleanup_done\",message=\"Empty non-index directories cleaned\""

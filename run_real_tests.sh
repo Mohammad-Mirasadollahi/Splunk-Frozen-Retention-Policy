@@ -1,0 +1,411 @@
+#!/bin/bash
+# Real end-to-end tests with verified mock frozen data.
+# Usage: bash ./run_real_tests.sh
+# Each feature is asserted separately. Fixture correctness is checked BEFORE the policy run.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+POLICY="$SCRIPT_DIR/Splunk_Frozen_Retention_Policy.sh"
+ROOT="${TEST_ROOT:-/tmp/splunk_frozen_real_tests_$$}"
+FROZEN="$ROOT/frozen"
+SCRIPTS="$ROOT/scripts"
+LOG="$ROOT/Splunk_Frozen_Data.log"
+LOCK="$ROOT/Splunk_Frozen_Retention_Policy.lock"
+PASS=0
+FAIL=0
+SKIP=0
+
+red() { printf 'FAIL: %s\n' "$*"; }
+green() { printf 'PASS: %s\n' "$*"; }
+yellow() { printf 'SKIP: %s\n' "$*"; }
+
+pass() { green "$1"; PASS=$((PASS + 1)); }
+fail() { red "$1"; FAIL=$((FAIL + 1)); }
+skip() { yellow "$1"; SKIP=$((SKIP + 1)); }
+
+assert_true() {
+    local name="$1"
+    shift
+    if "$@"; then
+        pass "$name"
+    else
+        fail "$name"
+    fi
+}
+
+assert_eq() {
+    local name="$1" got="$2" want="$3"
+    if [[ "$got" == "$want" ]]; then
+        pass "$name (got=$got)"
+    else
+        fail "$name (got=$got want=$want)"
+    fi
+}
+
+assert_le() {
+    local name="$1" got="$2" want="$3"
+    if [[ "$got" -le "$want" ]]; then
+        pass "$name (got=$got <= $want)"
+    else
+        fail "$name (got=$got want<=$want)"
+    fi
+}
+
+assert_ge() {
+    local name="$1" got="$2" want="$3"
+    if [[ "$got" -ge "$want" ]]; then
+        pass "$name (got=$got >= $want)"
+    else
+        fail "$name (got=$got want>=$want)"
+    fi
+}
+
+file_age_days() {
+    local f="$1"
+    local epoch
+    epoch=$(stat -c %Y "$f")
+    echo $(( ( $(date +%s) - epoch ) / 86400 ))
+}
+
+dir_size_mb() {
+    du -cms "$1" 2>/dev/null | awk '/total/ {print $1; exit}'
+}
+
+log_has() {
+    local pat="$1"
+    grep -Eq -- "$pat" "$LOG"
+}
+
+cleanup() {
+    rm -rf "$ROOT"
+}
+trap cleanup EXIT
+
+mkdir -p "$FROZEN" "$SCRIPTS"
+: >"$LOG"
+
+echo "=== 1) Building mock frozen data under $ROOT ==="
+
+# --- Feature fixtures -------------------------------------------------------
+
+# A) retention_short_span: all files old (~100d), span only ~3 days.
+#    Old buggy logic (span) would skip; age logic must delete.
+mkdir -p "$FROZEN/retention_short_span"
+dd if=/dev/zero of="$FROZEN/retention_short_span/old_a.log" bs=1M count=2 status=none
+dd if=/dev/zero of="$FROZEN/retention_short_span/old_b.log" bs=1M count=2 status=none
+touch -d "100 days ago" "$FROZEN/retention_short_span/old_a.log"
+touch -d "97 days ago" "$FROZEN/retention_short_span/old_b.log"
+
+# B) size_over: recent files, total ~9MB, limit 5MB → delete oldest (4MB) first; keep newer (4MB).
+mkdir -p "$FROZEN/size_over"
+dd if=/dev/zero of="$FROZEN/size_over/older.log" bs=1M count=4 status=none
+dd if=/dev/zero of="$FROZEN/size_over/newer.log" bs=1M count=4 status=none
+touch -d "10 days ago" "$FROZEN/size_over/older.log"
+touch -d "1 day ago" "$FROZEN/size_over/newer.log"
+
+# C) unconfigured: old+large, must remain untouched (not in conf).
+mkdir -p "$FROZEN/unconfigured"
+dd if=/dev/zero of="$FROZEN/unconfigured/keep_me.log" bs=1M count=4 status=none
+touch -d "200 days ago" "$FROZEN/unconfigured/keep_me.log"
+UNCONF_SHA=$(sha256sum "$FROZEN/unconfigured/keep_me.log" | awk '{print $1}')
+UNCONF_MTIME=$(stat -c %Y "$FROZEN/unconfigured/keep_me.log")
+
+# D) empty_idx: configured, no files → no crash + final_summary.
+mkdir -p "$FROZEN/empty_idx"
+
+# E) within_limits: small + young → no deletion.
+mkdir -p "$FROZEN/within_limits"
+dd if=/dev/zero of="$FROZEN/within_limits/ok.log" bs=1M count=1 status=none
+touch -d "2 days ago" "$FROZEN/within_limits/ok.log"
+WITHIN_SHA=$(sha256sum "$FROZEN/within_limits/ok.log" | awk '{print $1}')
+
+# F) empty_nested: retention deletes only nested file → empty dirs cleaned; index root kept.
+mkdir -p "$FROZEN/empty_nested/bucket/db"
+dd if=/dev/zero of="$FROZEN/empty_nested/bucket/db/stale.log" bs=1M count=1 status=none
+touch -d "90 days ago" "$FROZEN/empty_nested/bucket/db/stale.log"
+# Also a kept young file at index root so index is not empty of all data after? 
+# Retention 30: stale goes away; empty bucket/db should be removed.
+dd if=/dev/zero of="$FROZEN/empty_nested/fresh.log" bs=1M count=1 status=none
+touch -d "3 days ago" "$FROZEN/empty_nested/fresh.log"
+
+# G) both_limits: over size AND over retention.
+mkdir -p "$FROZEN/both_limits"
+dd if=/dev/zero of="$FROZEN/both_limits/ancient_big.log" bs=1M count=8 status=none
+dd if=/dev/zero of="$FROZEN/both_limits/ancient_small.log" bs=1M count=2 status=none
+touch -d "120 days ago" "$FROZEN/both_limits/ancient_big.log"
+touch -d "110 days ago" "$FROZEN/both_limits/ancient_small.log"
+
+# Config with comments + blank lines (parser feature).
+# Poison: a full index line inside a comment must NOT be loaded.
+cat >"$SCRIPTS/index_size.conf" <<'EOF'
+# Real-test config
+# index=commented_out,size=1,retention=1
+
+index=retention_short_span,size=5000,retention=30
+
+index=size_over,size=5,retention=365
+index=empty_idx,size=100,retention=30
+index=within_limits,size=50,retention=30
+index=empty_nested,size=5000,retention=30
+index=both_limits,size=5,retention=30
+# unconfigured intentionally omitted
+EOF
+
+# H) commented_out: would be nuked if comment lines were parsed as config.
+mkdir -p "$FROZEN/commented_out"
+dd if=/dev/zero of="$FROZEN/commented_out/poison.log" bs=1M count=3 status=none
+touch -d "200 days ago" "$FROZEN/commented_out/poison.log"
+COMMENT_SHA=$(sha256sum "$FROZEN/commented_out/poison.log" | awk '{print $1}')
+
+
+echo "=== 2) Verifying mock data BEFORE policy run ==="
+
+AGE_A=$(file_age_days "$FROZEN/retention_short_span/old_a.log")
+AGE_B=$(file_age_days "$FROZEN/retention_short_span/old_b.log")
+if [[ "$AGE_A" -ge "$AGE_B" ]]; then
+    SPAN=$((AGE_A - AGE_B))
+else
+    SPAN=$((AGE_B - AGE_A))
+fi
+# ages around 97-100; allow clock skew of 1 day
+assert_ge "fixture retention_short_span old_a age >= 96" "$AGE_A" 96
+assert_ge "fixture retention_short_span old_b age >= 96" "$AGE_B" 96
+assert_le "fixture retention_short_span span <= 5 (old bug would use span)" "$SPAN" 5
+assert_true "fixture retention_short_span would fail age check vs retention=30" \
+    bash -c "[[ $AGE_A -gt 30 && $AGE_B -gt 30 ]]"
+assert_true "fixture retention_short_span would PASS buggy span check vs retention=30" \
+    bash -c "[[ $SPAN -le 30 ]]"
+
+SIZE_OVER_MB=$(dir_size_mb "$FROZEN/size_over")
+assert_ge "fixture size_over total MB > 5" "$SIZE_OVER_MB" 6
+AGE_OLDER=$(file_age_days "$FROZEN/size_over/older.log")
+AGE_NEWER=$(file_age_days "$FROZEN/size_over/newer.log")
+assert_true "fixture size_over older is older than newer" bash -c "[[ $AGE_OLDER -gt $AGE_NEWER ]]"
+assert_le "fixture size_over files within retention=365" "$AGE_OLDER" 365
+
+assert_true "fixture unconfigured file exists" test -f "$FROZEN/unconfigured/keep_me.log"
+assert_ge "fixture unconfigured age > 30" "$(file_age_days "$FROZEN/unconfigured/keep_me.log")" 30
+
+assert_eq "fixture empty_idx has zero files" \
+    "$(find "$FROZEN/empty_idx" -type f | wc -l | tr -d ' ')" "0"
+
+assert_le "fixture within_limits size MB <= 50" "$(dir_size_mb "$FROZEN/within_limits")" 50
+assert_le "fixture within_limits age <= 30" "$(file_age_days "$FROZEN/within_limits/ok.log")" 30
+
+assert_true "fixture empty_nested has nested stale file" test -f "$FROZEN/empty_nested/bucket/db/stale.log"
+assert_ge "fixture empty_nested stale age > 30" "$(file_age_days "$FROZEN/empty_nested/bucket/db/stale.log")" 30
+assert_le "fixture empty_nested fresh age <= 30" "$(file_age_days "$FROZEN/empty_nested/fresh.log")" 30
+
+BOTH_MB=$(dir_size_mb "$FROZEN/both_limits")
+assert_ge "fixture both_limits size > 5" "$BOTH_MB" 6
+assert_ge "fixture both_limits oldest age > 30" "$(file_age_days "$FROZEN/both_limits/ancient_big.log")" 30
+
+assert_true "fixture config contains comment line" grep -q '^#' "$SCRIPTS/index_size.conf"
+assert_true "fixture config has commented poison index line" \
+    grep -Eq '^#[[:space:]]*index=commented_out' "$SCRIPTS/index_size.conf"
+assert_true "fixture config omits active unconfigured index entry" \
+    bash -c "! grep -Eq '^[[:space:]]*index=unconfigured' '$SCRIPTS/index_size.conf'"
+assert_true "fixture commented_out poison file exists" test -f "$FROZEN/commented_out/poison.log"
+assert_ge "fixture commented_out age > 1 (would delete if comment parsed)" \
+    "$(file_age_days "$FROZEN/commented_out/poison.log")" 1
+
+if [[ "$FAIL" -gt 0 ]]; then
+    echo "Aborting: mock fixtures invalid ($FAIL failures). Policy not run."
+    exit 1
+fi
+echo "Mock fixtures OK. Running policy..."
+
+echo "=== 3) Running Splunk_Frozen_Retention_Policy.sh ==="
+export FROZEN_PATH="$FROZEN"
+export LOG_FILE="$LOG"
+export CONFIG_FILE="$SCRIPTS/index_size.conf"
+export LOCK_FILE="$LOCK"
+bash "$POLICY"
+
+echo "=== 4) Feature assertions AFTER policy run ==="
+
+log_first_lineno() {
+    # Print 1-based line number of first regex match in LOG, or 0
+    local pat="$1"
+    local n
+    n=$(grep -nE -- "$pat" "$LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    echo "${n:-0}"
+}
+
+log_match_count() {
+    local pat="$1"
+    grep -cE -- "$pat" "$LOG" 2>/dev/null || true
+}
+
+# --- F1 retention age (not span) ---
+REMAIN_RET=$(find "$FROZEN/retention_short_span" -type f | wc -l | tr -d ' ')
+assert_eq "F1 retention_age: all old short-span files deleted" "$REMAIN_RET" "0"
+assert_true "F1 retention_age: log reason retention_days_exceeded" \
+    log_has 'frozen_index="retention_short_span".*action="exceeds_limit".*retention_days_exceeded'
+assert_true "F1 retention_age: deletion_summary present" \
+    log_has 'frozen_index="retention_short_span".*action="deletion_summary"'
+# oldest file (100d) must be deleted before newer-old (97d)
+LINE_A=$(log_first_lineno 'frozen_index="retention_short_span".*action="deleting_file".*old_a\.log')
+LINE_B=$(log_first_lineno 'frozen_index="retention_short_span".*action="deleting_file".*old_b\.log')
+assert_true "F1 retention_age: old_a appears in deleting_file log" bash -c "[[ $LINE_A -gt 0 ]]"
+assert_true "F1 retention_age: old_b appears in deleting_file log" bash -c "[[ $LINE_B -gt 0 ]]"
+assert_true "F1 retention_age: deletes oldest first (old_a before old_b)" bash -c "[[ $LINE_A -lt $LINE_B ]]"
+
+# --- F2 size limit + oldest first (final state + log order) ---
+SIZE_AFTER=$(dir_size_mb "$FROZEN/size_over")
+assert_le "F2 size_limit: directory within 5MB" "$SIZE_AFTER" 5
+assert_true "F2 size_limit: older.log deleted" \
+    bash -c "! test -f '$FROZEN/size_over/older.log'"
+assert_true "F2 size_limit: newer.log kept when enough" \
+    test -f "$FROZEN/size_over/newer.log"
+assert_true "F2 size_limit: log size_limit_exceeded" \
+    log_has 'frozen_index="size_over".*action="exceeds_limit".*size_limit_exceeded'
+DEL_OLDER=$(log_first_lineno 'frozen_index="size_over".*action="deleting_file".*older\.log')
+DEL_NEWER=$(log_first_lineno 'frozen_index="size_over".*action="deleting_file".*newer\.log')
+SIZE_DEL_COUNT=$(log_match_count 'frozen_index="size_over".*action="deleting_file"')
+assert_true "F2 size_limit: older.log deleting_file logged" bash -c "[[ $DEL_OLDER -gt 0 ]]"
+assert_eq "F2 size_limit: newer.log never deleted (log)" "$DEL_NEWER" "0"
+assert_eq "F2 size_limit: exactly one file deleted for size_over" "$SIZE_DEL_COUNT" "1"
+# exceeds_limit must appear before the delete line
+EXC_SIZE=$(log_first_lineno 'frozen_index="size_over".*action="exceeds_limit"')
+assert_true "F2 size_limit: exceeds_limit before deleting_file" bash -c "[[ $EXC_SIZE -gt 0 && $EXC_SIZE -lt $DEL_OLDER ]]"
+
+# --- F3 skip unconfigured ---
+assert_true "F3 skip_unconfigured: file still present" test -f "$FROZEN/unconfigured/keep_me.log"
+assert_eq "F3 skip_unconfigured: content unchanged" \
+    "$(sha256sum "$FROZEN/unconfigured/keep_me.log" | awk '{print $1}')" "$UNCONF_SHA"
+assert_eq "F3 skip_unconfigured: mtime unchanged" \
+    "$(stat -c %Y "$FROZEN/unconfigured/keep_me.log")" "$UNCONF_MTIME"
+assert_true "F3 skip_unconfigured: log action" \
+    log_has 'frozen_index="unconfigured".*action="skipped_unconfigured"'
+assert_true "F3 skip_unconfigured: no deleting_file for it" \
+    bash -c "! grep -E 'frozen_index=\"unconfigured\".*action=\"deleting_file\"' '$LOG'"
+assert_true "F3 skip_unconfigured: no exceeds_limit for it" \
+    bash -c "! grep -E 'frozen_index=\"unconfigured\".*action=\"exceeds_limit\"' '$LOG'"
+
+# --- F4 empty index ---
+assert_true "F4 empty_idx: index root still exists" test -d "$FROZEN/empty_idx"
+assert_true "F4 empty_idx: final_summary logged" \
+    log_has 'frozen_index="empty_idx".*action="final_summary"'
+assert_true "F4 empty_idx: no exceeds_limit" \
+    bash -c "! grep -E 'frozen_index=\"empty_idx\".*action=\"exceeds_limit\"' '$LOG'"
+assert_true "F4 empty_idx: no deleting_file" \
+    bash -c "! grep -E 'frozen_index=\"empty_idx\".*action=\"deleting_file\"' '$LOG'"
+
+# --- F5 within limits untouched ---
+assert_eq "F5 within_limits: file hash unchanged" \
+    "$(sha256sum "$FROZEN/within_limits/ok.log" | awk '{print $1}')" "$WITHIN_SHA"
+assert_true "F5 within_limits: final_summary logged" \
+    log_has 'frozen_index="within_limits".*action="final_summary"'
+assert_true "F5 within_limits: no exceeds_limit" \
+    bash -c "! grep -E 'frozen_index=\"within_limits\".*action=\"exceeds_limit\"' '$LOG'"
+assert_true "F5 within_limits: no deleting_file" \
+    bash -c "! grep -E 'frozen_index=\"within_limits\".*action=\"deleting_file\"' '$LOG'"
+assert_true "F5 within_limits: no deletion_summary" \
+    bash -c "! grep -E 'frozen_index=\"within_limits\".*action=\"deletion_summary\"' '$LOG'"
+
+# --- F6 empty nested cleanup ---
+assert_true "F6 empty_nested: fresh file kept" test -f "$FROZEN/empty_nested/fresh.log"
+assert_true "F6 empty_nested: stale nested file deleted" \
+    bash -c "! test -f '$FROZEN/empty_nested/bucket/db/stale.log'"
+assert_true "F6 empty_nested: empty bucket tree removed" \
+    bash -c "! test -d '$FROZEN/empty_nested/bucket'"
+assert_true "F6 empty_nested: index root preserved" test -d "$FROZEN/empty_nested"
+assert_true "F6 empty_nested: deleted_empty_dir for nested path" \
+    log_has 'action="deleted_empty_dir".*deleted_dir="[^"]*/empty_nested/bucket'
+assert_true "F6 empty_nested: cleanup_done logged" log_has 'action="empty_folder_cleanup_done"'
+# cleanup_done must be after deleted_empty_dir
+LINE_EMPTY=$(log_first_lineno 'action="deleted_empty_dir".*empty_nested')
+LINE_DONE=$(log_first_lineno 'action="empty_folder_cleanup_done"')
+assert_true "F6 empty_nested: cleanup_done after deleted_empty_dir" \
+    bash -c "[[ $LINE_EMPTY -gt 0 && $LINE_DONE -gt 0 && $LINE_EMPTY -lt $LINE_DONE ]]"
+
+# --- F7 both limits ---
+BOTH_AFTER=$(dir_size_mb "$FROZEN/both_limits")
+assert_le "F7 both_limits: size within limit" "$BOTH_AFTER" 5
+REMAIN_BOTH=$(find "$FROZEN/both_limits" -type f | wc -l | tr -d ' ')
+assert_eq "F7 both_limits: all over-age files removed" "$REMAIN_BOTH" "0"
+assert_true "F7 both_limits: exceeds_limit mentions both reasons" \
+    log_has 'frozen_index="both_limits".*action="exceeds_limit".*size_limit_exceeded.*retention_days_exceeded'
+# oldest (ancient_big 120d) before ancient_small (110d)
+LINE_BIG=$(log_first_lineno 'frozen_index="both_limits".*action="deleting_file".*ancient_big\.log')
+LINE_SMALL=$(log_first_lineno 'frozen_index="both_limits".*action="deleting_file".*ancient_small\.log')
+assert_true "F7 both_limits: deletes oldest first (big before small)" \
+    bash -c "[[ $LINE_BIG -gt 0 && $LINE_SMALL -gt 0 && $LINE_BIG -lt $LINE_SMALL ]]"
+
+# --- F8 config comment/blank parse (poison comment must not activate limits) ---
+assert_true "F8 config_parse: retention_short_span processed" \
+    log_has 'frozen_index="retention_short_span"'
+assert_true "F8 config_parse: size_over processed" \
+    log_has 'frozen_index="size_over"'
+assert_true "F8 comment_not_parsed: poison file still present" \
+    test -f "$FROZEN/commented_out/poison.log"
+assert_eq "F8 comment_not_parsed: poison content unchanged" \
+    "$(sha256sum "$FROZEN/commented_out/poison.log" | awk '{print $1}')" "$COMMENT_SHA"
+assert_true "F8 comment_not_parsed: treated as skipped_unconfigured" \
+    log_has 'frozen_index="commented_out".*action="skipped_unconfigured"'
+assert_true "F8 comment_not_parsed: no deleting_file for commented_out" \
+    bash -c "! grep -E 'frozen_index=\"commented_out\".*action=\"deleting_file\"' '$LOG'"
+assert_true "F8 comment_not_parsed: no exceeds_limit for commented_out" \
+    bash -c "! grep -E 'frozen_index=\"commented_out\".*action=\"exceeds_limit\"' '$LOG'"
+
+# --- F9 log append (not truncate) ---
+FIRST_LINE=$(head -1 "$LOG")
+LINES_BEFORE=$(wc -l <"$LOG" | tr -d ' ')
+MARKER="timestamp=\"TEST-MARKER\",action=\"test_marker\",message=\"append-check\""
+echo "$MARKER" >>"$LOG"
+bash "$POLICY"
+LINES_AFTER=$(wc -l <"$LOG" | tr -d ' ')
+assert_true "F9 log_append: second run grows log" bash -c "[[ $LINES_AFTER -gt $LINES_BEFORE ]]"
+assert_eq "F9 log_append: original first line preserved" "$(head -1 "$LOG")" "$FIRST_LINE"
+assert_true "F9 log_append: mid-run marker still present" grep -Fxq "$MARKER" "$LOG"
+
+# --- F10 flock / skipped_locked ---
+LOCK_LINES_BEFORE=$(grep -c 'action="skipped_locked"' "$LOG" || true)
+(
+    exec 9>"$LOCK"
+    flock -n 9 || exit 1
+    bash "$POLICY" || true
+)
+LOCK_LINES_AFTER=$(grep -c 'action="skipped_locked"' "$LOG" || true)
+assert_true "F10 flock: skipped_locked count increased while lock held" \
+    bash -c "[[ $LOCK_LINES_AFTER -gt $LOCK_LINES_BEFORE ]]"
+
+# --- F11 missing config ---
+MISSING_LOG="$ROOT/missing_config.log"
+MISSING_LOCK="$ROOT/missing_config.lock"
+set +e
+FROZEN_PATH="$FROZEN" LOG_FILE="$MISSING_LOG" CONFIG_FILE="$ROOT/no_such.conf" LOCK_FILE="$MISSING_LOCK" \
+    bash "$POLICY"
+RC_CFG=$?
+set -e
+assert_eq "F11 missing_config: exit non-zero" "$RC_CFG" "1"
+assert_true "F11 missing_config: error logged" grep -q 'Config file not found' "$MISSING_LOG"
+
+# --- F12 missing frozen path ---
+MISSING_FP_LOG="$ROOT/missing_fp.log"
+MISSING_FP_LOCK="$ROOT/missing_fp.lock"
+set +e
+FROZEN_PATH="$ROOT/no_frozen" LOG_FILE="$MISSING_FP_LOG" CONFIG_FILE="$SCRIPTS/index_size.conf" LOCK_FILE="$MISSING_FP_LOCK" \
+    bash "$POLICY"
+RC_FP=$?
+set -e
+assert_eq "F12 missing_frozen_path: exit non-zero" "$RC_FP" "1"
+assert_true "F12 missing_frozen_path: error logged" grep -q 'Frozen path not found' "$MISSING_FP_LOG"
+
+# --- F13 final_summary for configured indexes ---
+for idx in retention_short_span size_over empty_idx within_limits empty_nested both_limits; do
+    assert_true "F13 final_summary: $idx" log_has "frozen_index=\"$idx\".*action=\"final_summary\""
+done
+# commented_out / unconfigured get skip, not a normal configured final_summary path — already covered
+
+echo
+echo "======== SUMMARY ========"
+echo "PASS=$PASS FAIL=$FAIL SKIP=$SKIP"
+if [[ "$FAIL" -gt 0 ]]; then
+    echo "REAL TESTS FAILED"
+    exit 1
+fi
+echo "REAL TESTS PASSED"
+exit 0
