@@ -197,7 +197,8 @@ Other actions: `deleted_empty_dir`, `empty_folder_cleanup_done`, `skipped_locked
 Unified entrypoint: **`TEST.sh`**.
 
 ```bash
-# Real feature assert suite (recommended)
+# Real feature assert suite (recommended) — includes boundary, cascade, spaces-in-path,
+# partial retention, bad/CRLF config, isolation, idempotency, rm-fail, etc.
 bash ./TEST.sh
 
 # Build a rich mock frozen tree only (under /tmp/frozen_test)
