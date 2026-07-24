@@ -394,6 +394,30 @@ set -e
 assert_eq "F12 missing_frozen_path: exit non-zero" "$RC_FP" "1"
 assert_true "F12 missing_frozen_path: error logged" grep -q 'Frozen path not found' "$MISSING_FP_LOG"
 
+# --- F14 rm failure must stop delete loop (no infinite loop) ---
+RMFAIL_ROOT="$ROOT/rmfail"
+RMFAIL_FROZEN="$RMFAIL_ROOT/frozen"
+RMFAIL_CFG="$RMFAIL_ROOT/index_size.conf"
+RMFAIL_LOG="$RMFAIL_ROOT/log"
+RMFAIL_LOCK="$RMFAIL_ROOT/lock"
+mkdir -p "$RMFAIL_FROZEN/rm_fail_idx"
+dd if=/dev/zero of="$RMFAIL_FROZEN/rm_fail_idx/stuck.log" bs=1M count=8 status=none
+echo 'index=rm_fail_idx,size=1,retention=365' >"$RMFAIL_CFG"
+
+if command -v chattr >/dev/null 2>&1 && chattr +i "$RMFAIL_FROZEN/rm_fail_idx/stuck.log" 2>/dev/null; then
+    set +e
+    timeout 15 env FROZEN_PATH="$RMFAIL_FROZEN" CONFIG_FILE="$RMFAIL_CFG" LOG_FILE="$RMFAIL_LOG" LOCK_FILE="$RMFAIL_LOCK" \
+        bash "$POLICY"
+    RC_RM=$?
+    set -e
+    chattr -i "$RMFAIL_FROZEN/rm_fail_idx/stuck.log" 2>/dev/null || true
+    assert_true "F14 rm_fail: finished within timeout (no infinite loop)" bash -c "[[ $RC_RM -ne 124 ]]"
+    assert_true "F14 rm_fail: stuck.log still present" test -f "$RMFAIL_FROZEN/rm_fail_idx/stuck.log"
+    assert_true "F14 rm_fail: delete_failed logged" grep -q 'action="delete_failed"' "$RMFAIL_LOG"
+else
+    skip "F14 rm_fail: chattr +i unavailable; cannot simulate undeletable file as root"
+fi
+
 # --- F13 final_summary for configured indexes ---
 for idx in retention_short_span size_over empty_idx within_limits empty_nested both_limits; do
     assert_true "F13 final_summary: $idx" log_has "frozen_index=\"$idx\".*action=\"final_summary\""

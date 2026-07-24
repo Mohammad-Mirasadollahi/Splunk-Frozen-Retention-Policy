@@ -224,7 +224,17 @@ do
             CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
             log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"deleting_file\",deleted_file=\"$OLDEST_FILE\",deleted_file_size_mb=\"$FILE_SIZE_MB\",deleted_file_age_days=\"$FILE_AGE_DAYS\",$DELETED_REASON,message=\"Deleting file to comply with policy\""
 
-            rm -f -- "$OLDEST_FILE"
+            if ! rm -f -- "$OLDEST_FILE"; then
+                CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+                log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"delete_failed\",deleted_file=\"$OLDEST_FILE\",message=\"rm failed; stopping delete loop to avoid spinning\""
+                break
+            fi
+            # If rm reported success but the path still exists (e.g. sticky/immutable edge cases), stop.
+            if [[ -e "$OLDEST_FILE" ]]; then
+                CURR_DATE="$(date +%Y-%m-%dT%H:%M:%S%z)"
+                log_line "timestamp=\"$CURR_DATE\",process_id=\"$PROCESS_ID\",frozen_index=\"$CURR_IDX\",action=\"delete_failed\",deleted_file=\"$OLDEST_FILE\",message=\"File still present after rm; stopping delete loop to avoid spinning\""
+                break
+            fi
             DELETED_SIZE=$((DELETED_SIZE + FILE_SIZE))
             refresh_index_metrics "$_dir"
         done

@@ -9,7 +9,7 @@
 3. **Stderr discarded** — `exec 2>/dev/null` hid failures. Stderr is appended to the same log file.
 4. **Log overwritten each run** — `exec > "$LOG_FILE"` truncated history. Logs are appended.
 5. **Empty / no-file directories** — Empty date strings fed `date -d` and the delete loop. Empty indexes are handled without crashing; the delete loop stops when no files remain.
-6. **Brittle delete loop** — Missing `OLDEST_FILE` could still call `rm`/`du`. The loop now validates the path and exits cleanly.
+6. **Brittle delete loop** — Missing `OLDEST_FILE` could still call `rm`/`du`. The loop now validates the path and exits cleanly. If `rm` fails or the path remains, the loop logs `delete_failed` and stops (avoids spinning).
 7. **systemd double-start / wrong unit type** — The installer enabled both a multi-user `.service` and a `.timer`, and the service was not `Type=oneshot`. Installer now writes an oneshot service, enables the timer only, and the main script uses `flock` against overlapping runs.
 
 ### Other
